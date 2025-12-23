@@ -1,0 +1,4593 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>香港昔日懷舊歷史文化3D模擬系統 - 多區域街道重現</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+    <style>
+        /* ===== 全局樣式 ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        :root {
+            --color-primary: #e60012;
+            --color-secondary: #0099cc;
+            --color-gold: #ffcc00;
+            --color-brick: #8B4513;
+            --color-concrete: #808080;
+            --color-neon-red: #ff0040;
+            --color-neon-blue: #00ffff;
+            --color-neon-green: #00ff00;
+        }
+
+        body {
+            background: #0a0a0a;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            position: fixed;
+        }
+
+        /* ===== 遊戲容器 ===== */
+        #game-container {
+            width: 100%;
+            height: 100vh;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* ===== 加載畫面 ===== */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1a1a1a, #0a0a0a);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            transition: opacity 0.5s ease;
+        }
+
+        .loading-progress {
+            width: 300px;
+            max-width: 80%;
+            margin-top: 20px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--color-gold);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 5px solid rgba(255, 255, 255, 0.1);
+            border-top-color: var(--color-gold);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* ===== 頁面系統 ===== */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .screen.active {
+            display: flex;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* ===== 主頁面 ===== */
+        #home-screen {
+            background: linear-gradient(rgba(0,0,0,0.8), rgba(0,0,0,0.9)), url('https://images.unsplash.com/photo-1569336415962-a1bd7615c2b6?auto=format&fit=crop&w=1600');
+            background-size: cover;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .game-title {
+            text-align: center;
+            margin-bottom: 50px;
+            padding: 30px;
+            background: rgba(26, 26, 26, 0.95);
+            border-radius: 15px;
+            border: 3px solid var(--color-gold);
+            box-shadow: 0 0 30px rgba(255, 204, 0, 0.4);
+            backdrop-filter: blur(10px);
+            max-width: 900px;
+            width: 100%;
+        }
+
+        .game-title h1 {
+            font-size: clamp(1.8rem, 4vw, 3rem);
+            margin-bottom: 15px;
+            color: var(--color-gold);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .game-subtitle {
+            color: #ccc;
+            font-size: clamp(0.9rem, 2vw, 1.1rem);
+            line-height: 1.6;
+            margin: 20px auto;
+        }
+
+        .feature-tags {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .feature-tag {
+            padding: 6px 12px;
+            background: rgba(230, 0, 18, 0.2);
+            border: 1px solid var(--color-primary);
+            border-radius: 20px;
+            font-size: clamp(0.7rem, 1.5vw, 0.9rem);
+            white-space: nowrap;
+        }
+
+        .menu-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-width: 500px;
+            width: 90%;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, var(--color-primary), #b30000);
+            color: white;
+            border: none;
+            padding: 16px 30px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            touch-action: manipulation;
+            min-height: 50px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(230, 0, 18, 0.4);
+        }
+
+        .btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 2px 8px rgba(230, 0, 18, 0.4);
+        }
+
+        .btn-quick-start {
+            background: linear-gradient(135deg, var(--color-gold), #ff9900);
+        }
+
+        .btn-quick-start:hover {
+            box-shadow: 0 6px 20px rgba(255, 204, 0, 0.4);
+        }
+
+        /* ===== 模擬器主頁面 ===== */
+        #simulator-screen {
+            background: #1a1a1a;
+        }
+
+        /* 標題欄 */
+        .simulator-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 20px;
+            background: rgba(0, 0, 0, 0.95);
+            border-bottom: 3px solid var(--color-gold);
+            position: relative;
+            z-index: 100;
+            flex-wrap: wrap;
+            gap: 10px;
+            min-height: 70px;
+        }
+
+        .simulator-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .simulator-title h2 {
+            color: var(--color-gold);
+            font-size: clamp(1rem, 2vw, 1.6rem);
+        }
+
+        .selector-container {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .era-selector, .district-selector {
+            display: flex;
+            gap: 8px;
+            background: rgba(255,255,255,0.1);
+            padding: 6px;
+            border-radius: 8px;
+            flex-wrap: wrap;
+        }
+
+        .era-btn, .district-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid transparent;
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            touch-action: manipulation;
+        }
+
+        .era-btn:hover, .district-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .era-btn:active, .district-btn:active {
+            transform: scale(0.95);
+        }
+
+        .era-btn.active, .district-btn.active {
+            background: var(--color-primary);
+            border-color: var(--color-gold);
+            box-shadow: 0 0 8px rgba(230, 0, 18, 0.5);
+        }
+
+        .favorite-btn {
+            background: rgba(255, 204, 0, 0.2);
+            border: 2px solid transparent;
+            color: var(--color-gold);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        .favorite-btn:hover {
+            background: rgba(255, 204, 0, 0.3);
+        }
+
+        .favorite-btn.active {
+            background: var(--color-gold);
+            color: #000;
+            border-color: var(--color-gold);
+        }
+
+        /* 主內容區 */
+        .simulator-main {
+            display: flex;
+            height: calc(100vh - 70px);
+            position: relative;
+            flex-direction: column;
+        }
+
+        /* 3D視圖容器 */
+        #threed-container {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+            background: #0f0f0f;
+            min-height: 200px;
+        }
+
+        #main-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            outline: none;
+            cursor: grab;
+        }
+
+        #main-canvas:active {
+            cursor: grabbing;
+        }
+
+        /* 控制面板容器 */
+        .control-panel-container {
+            width: 100%;
+            height: 50vh;
+            position: relative;
+            transition: transform 0.3s ease;
+            transform: translateY(0);
+        }
+
+        .control-panel-container.hidden {
+            transform: translateY(100%);
+        }
+
+        /* 控制面板 */
+        .control-panel {
+            width: 100%;
+            height: 100%;
+            background: rgba(20, 20, 20, 0.98);
+            border-top: 3px solid var(--color-primary);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* 控制面板內容區域 - 可滾動 */
+        .control-panel-content {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* 優化滾動條樣式 */
+        .control-panel-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .control-panel-content::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+        }
+
+        .control-panel-content::-webkit-scrollbar-thumb {
+            background: var(--color-primary);
+            border-radius: 4px;
+            border: 2px solid rgba(20, 20, 20, 0.9);
+        }
+
+        .control-panel-content::-webkit-scrollbar-thumb:hover {
+            background: var(--color-gold);
+        }
+
+        /* 滾動提示 */
+        .scroll-hint {
+            position: absolute;
+            bottom: 10px;
+            right: 15px;
+            color: var(--color-gold);
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
+
+        .control-panel-toggle {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--color-primary);
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            z-index: 101;
+            touch-action: manipulation;
+            min-width: 120px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .control-panel-toggle:hover {
+            background: #ff3333;
+        }
+
+        .control-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 15px;
+            border: 1px solid rgba(255,255,255,0.1);
+            flex-shrink: 0;
+        }
+
+        .control-section h3 {
+            color: var(--color-gold);
+            margin-bottom: 12px;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* 控制組件樣式 */
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .control-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            font-size: 0.85rem;
+            touch-action: manipulation;
+        }
+
+        .control-btn:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        .control-btn.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+
+        .slider-container {
+            margin: 12px 0;
+        }
+
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 6px;
+            color: #ccc;
+            font-size: 0.85rem;
+        }
+
+        .slider {
+            width: 100%;
+            height: 5px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+            touch-action: manipulation;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: var(--color-primary);
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid white;
+        }
+
+        /* 模式選擇器 */
+        .mode-selector {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .mode-btn {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+            touch-action: manipulation;
+        }
+
+        .mode-btn:hover {
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }
+
+        .mode-btn:active {
+            transform: scale(0.98);
+        }
+
+        .mode-btn.active {
+            background: var(--color-secondary);
+            border-color: var(--color-gold);
+        }
+
+        .mode-btn i {
+            font-size: 1.2rem;
+        }
+
+        /* HUD元素 */
+        .hud-element {
+            position: absolute;
+            z-index: 50;
+            background: rgba(0,0,0,0.9);
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            font-size: 0.85rem;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: calc(100vw - 40px);
+        }
+
+        #controls-hint {
+            bottom: 20px;
+            left: 20px;
+            max-width: 300px;
+        }
+
+        #zoom-display {
+            top: 80px;
+            right: 20px;
+            font-size: 0.9rem;
+        }
+
+        #detail-panel {
+            top: 80px;
+            right: 20px;
+            max-width: 350px;
+            display: none;
+        }
+
+        #era-info {
+            top: 20px;
+            left: 20px;
+            max-width: 280px;
+        }
+
+        #district-info {
+            top: 100px;
+            left: 20px;
+            max-width: 280px;
+        }
+
+        /* 視角控制按鈕 */
+        .view-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 8px;
+            z-index: 60;
+        }
+
+        .view-btn {
+            background: rgba(0,0,0,0.9);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            backdrop-filter: blur(10px);
+            touch-action: manipulation;
+        }
+
+        .view-btn:hover {
+            background: rgba(230, 0, 18, 0.8);
+            transform: translateY(-2px);
+        }
+
+        .view-btn:active {
+            transform: scale(0.95);
+        }
+
+        .view-btn.active {
+            background: var(--color-primary);
+            border-color: var(--color-gold);
+        }
+
+        .view-btn i {
+            font-size: 1.2rem;
+        }
+
+        /* 移動控制（手機） */
+        .mobile-controls {
+            position: absolute;
+            bottom: 100px;
+            left: 20px;
+            right: 20px;
+            z-index: 60;
+            display: none;
+            justify-content: space-between;
+            touch-action: manipulation;
+        }
+
+        .mobile-joystick {
+            width: 100px;
+            height: 100px;
+            background: rgba(0,0,0,0.6);
+            border-radius: 50%;
+            position: relative;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .mobile-joystick-handle {
+            width: 40px;
+            height: 40px;
+            background: rgba(230, 0, 18, 0.8);
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        .mobile-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .mobile-btn {
+            width: 60px;
+            height: 60px;
+            background: rgba(0,0,0,0.8);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+        }
+
+        .mobile-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 狀態欄 */
+        .status-bar {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0,0,0,0.95);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            z-index: 100;
+            flex-wrap: wrap;
+        }
+
+        .status-info {
+            display: flex;
+            gap: 20px;
+            color: #ccc;
+            flex-wrap: wrap;
+            font-size: 0.85rem;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* 性能警告 */
+        .performance-warning {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(230, 0, 18, 0.9);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            display: none;
+            backdrop-filter: blur(10px);
+            text-align: center;
+            max-width: 90%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+            100% { transform: translateX(-50%) scale(1); }
+        }
+
+        /* 觸摸提示 */
+        .touch-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            z-index: 1000;
+            display: none;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 2px solid var(--color-gold);
+            max-width: 90%;
+        }
+
+        /* 互動提示 */
+        .interaction-hint {
+            position: absolute;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            pointer-events: none;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--color-gold);
+            white-space: nowrap;
+        }
+
+        /* 通知系統 */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.9);
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            backdrop-filter: blur(10px);
+            border-left: 4px solid var(--color-primary);
+            transform: translateX(150%);
+            transition: transform 0.3s ease;
+            max-width: 350px;
+        }
+
+        .notification.show {
+            transform: translateX(0);
+        }
+
+        .notification-success {
+            border-left-color: #4CAF50;
+        }
+
+        .notification-warning {
+            border-left-color: #FF9800;
+        }
+
+        .notification-error {
+            border-left-color: #F44336;
+        }
+
+        .notification-retry-btn {
+            background: var(--color-primary);
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            margin-left: 10px;
+        }
+
+        /* 第一人稱十字準星 */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            z-index: 55;
+            pointer-events: none;
+        }
+
+        .crosshair::before,
+        .crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+        }
+
+        .crosshair::before {
+            width: 2px;
+            height: 20px;
+            left: 9px;
+        }
+
+        .crosshair::after {
+            width: 20px;
+            height: 2px;
+            top: 9px;
+        }
+
+        /* 控制按鈕容器 */
+        .control-buttons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+
+        .control-button {
+            background: rgba(0,0,0,0.9);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            backdrop-filter: blur(10px);
+            touch-action: manipulation;
+        }
+
+        .control-button:hover {
+            background: rgba(230, 0, 18, 0.9);
+            transform: translateY(-2px);
+        }
+
+        .control-button:active {
+            transform: scale(0.95);
+        }
+
+        .sound-toggle.muted {
+            background: rgba(100, 100, 100, 0.9);
+        }
+
+        /* 收藏場景面板 */
+        .favorites-panel {
+            position: absolute;
+            top: 60px;
+            right: 20px;
+            background: rgba(0,0,0,0.95);
+            border-radius: 8px;
+            padding: 15px;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 200px;
+            backdrop-filter: blur(10px);
+            border: 2px solid var(--color-gold);
+        }
+
+        .favorites-panel.show {
+            display: flex;
+        }
+
+        .favorite-item {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .favorite-item:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        .favorite-item .remove-btn {
+            color: #ff4444;
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+
+        .favorite-item .remove-btn:hover {
+            background: rgba(255,68,68,0.2);
+        }
+
+        /* 快捷場景按鈕 */
+        .quick-scenes {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+
+        .quick-scene-btn {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            transition: all 0.2s ease;
+        }
+
+        .quick-scene-btn:hover {
+            background: rgba(255,255,255,0.2);
+        }
+
+        /* 響應式設計 */
+        @media (min-width: 769px) {
+            .simulator-main {
+                flex-direction: row;
+            }
+            
+            .control-panel-container {
+                width: 400px;
+                height: 100%;
+                border-left: 3px solid var(--color-primary);
+                border-top: none;
+                transform: translateX(0);
+            }
+            
+            .control-panel-container.hidden {
+                transform: translateX(100%);
+            }
+            
+            .control-panel-toggle {
+                left: auto;
+                right: 400px;
+                transform: translateX(0);
+                border-radius: 8px 0 0 8px;
+                bottom: auto;
+                top: 50%;
+                transform: translateX(0) translateY(-50%);
+                writing-mode: vertical-rl;
+                text-orientation: mixed;
+                padding: 20px 8px;
+                min-width: auto;
+            }
+            
+            .mobile-controls {
+                display: none !important;
+            }
+            
+            .scroll-hint {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .game-title {
+                padding: 20px;
+                margin-bottom: 30px;
+            }
+            
+            .btn {
+                padding: 14px 25px;
+                font-size: 1rem;
+            }
+            
+            .simulator-header {
+                padding: 10px;
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .simulator-title h2 {
+                font-size: 1.2rem;
+            }
+            
+            .hud-element {
+                font-size: 0.8rem;
+                padding: 10px 12px;
+                max-width: calc(100vw - 30px);
+            }
+            
+            #controls-hint {
+                max-width: 200px;
+                bottom: 10px;
+                left: 10px;
+            }
+            
+            .view-controls {
+                bottom: 10px;
+                right: 10px;
+            }
+            
+            .view-btn {
+                padding: 8px 12px;
+            }
+            
+            .control-buttons {
+                top: 10px;
+                right: 10px;
+                flex-direction: column;
+            }
+            
+            .control-button {
+                padding: 8px 12px;
+                font-size: 0.9rem;
+            }
+            
+            .status-info {
+                gap: 10px;
+                font-size: 0.75rem;
+            }
+            
+            .mobile-controls {
+                display: flex;
+            }
+            
+            .touch-hint {
+                display: block;
+            }
+            
+            .scroll-hint {
+                display: flex;
+            }
+            
+            .favorites-panel {
+                top: 70px;
+                right: 10px;
+                left: 10px;
+                min-width: auto;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .button-group {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .mode-selector {
+                grid-template-columns: 1fr;
+            }
+            
+            .feature-tags {
+                gap: 5px;
+            }
+            
+            .feature-tag {
+                padding: 4px 8px;
+                font-size: 0.7rem;
+            }
+            
+            .selector-container {
+                flex-direction: column;
+                width: 100%;
+            }
+            
+            .era-selector, .district-selector {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                padding: 5px;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            .era-selector::-webkit-scrollbar,
+            .district-selector::-webkit-scrollbar {
+                height: 4px;
+            }
+            
+            .era-selector::-webkit-scrollbar-thumb,
+            .district-selector::-webkit-scrollbar-thumb {
+                background: var(--color-primary);
+                border-radius: 2px;
+            }
+            
+            .view-controls {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            
+            .view-btn {
+                padding: 6px 10px;
+            }
+            
+            .view-btn span {
+                font-size: 0.6rem;
+            }
+        }
+
+        /* 高性能模式 */
+        .performance-mode .button-group {
+            grid-template-columns: repeat(2, 1fr);
+        }
+
+        .performance-mode .control-section {
+            padding: 12px;
+        }
+
+        .performance-mode .control-btn {
+            padding: 8px;
+            font-size: 0.8rem;
+        }
+
+        /* 防止滾動穿透 */
+        .no-scroll {
+            overflow: hidden !important;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 詳細資訊面板樣式 */
+        .detail-content {
+            line-height: 1.6;
+            margin: 8px 0;
+        }
+
+        .detail-icon {
+            display: inline-block;
+            width: 20px;
+            text-align: center;
+            margin-right: 8px;
+            color: var(--color-gold);
+        }
+
+        /* 交互游標 */
+        .interactive-cursor {
+            cursor: pointer !important;
+        }
+
+        /* 視錐體剔除提示 */
+        .frustum-info {
+            position: absolute;
+            top: 150px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <!-- 加載畫面 -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="spinner"></div>
+        <div style="color: white; font-size: 1.2rem; margin-top: 20px;">載入香港昔日懷舊歷史文化3D模擬系統...</div>
+        <div style="color: #ccc; font-size: 0.9rem; margin-top: 10px;">正在創建多區域街道場景</div>
+        <div class="loading-progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <div style="color: #ccc; font-size: 0.9rem; margin-top: 5px; text-align: center;" id="progress-text">0%</div>
+        </div>
+    </div>
+
+    <!-- 性能警告 -->
+    <div id="performance-warning" class="performance-warning">
+        <i class="fas fa-exclamation-triangle"></i> 偵測到性能問題，已自動調整畫質
+    </div>
+
+    <!-- 通知系統 -->
+    <div id="notification" class="notification">
+        <i class="fas fa-info-circle"></i>
+        <span id="notification-message">通知內容</span>
+        <button id="notification-retry" class="notification-retry-btn" style="display: none;">重試</button>
+    </div>
+
+    <!-- 觸摸提示 -->
+    <div id="touch-hint" class="touch-hint">
+        <i class="fas fa-hand-pointer fa-2x" style="color: var(--color-gold);"></i><br>
+        <div style="margin: 15px 0; font-size: 1.1rem;">歡迎使用香港昔日懷舊街道模擬系統</div>
+        <div style="text-align: left; line-height: 1.6;">
+            <div><i class="fas fa-mobile-alt"></i> 移動設備：單指旋轉，雙指縮放</div>
+            <div><i class="fas fa-desktop"></i> 桌面設備：滑鼠拖曳旋轉，滾輪縮放</div>
+            <div><i class="fas fa-hand-point-up"></i> 點擊建築物查看詳細資訊</div>
+        </div>
+        <button onclick="document.getElementById('touch-hint').style.display = 'none'" style="
+            background: var(--color-primary); color: white; border: none;
+            padding: 10px 20px; border-radius: 6px; margin-top: 15px;
+            cursor: pointer; width: 100%; font-size: 1rem;
+        ">
+            開始體驗
+        </button>
+    </div>
+
+    <!-- 遊戲容器 -->
+    <div id="game-container">
+        <!-- 主頁面 -->
+        <div id="home-screen" class="screen active">
+            <div class="game-title">
+                <h1>香港昔日懷舊歷史文化3D模擬系統</h1>
+                <p class="game-subtitle">
+                    沉浸式體驗香港60-90年代多區域街道風貌<br>
+                    石硤尾徙置區 • 深水埗市井文化 • 旺角繁華街景<br>
+                    真實建築群落 • 動態行人車輛 • 完整年代細節
+                </p>
+                <div class="feature-tags">
+                    <span class="feature-tag"><i class="fas fa-building"></i> 多座連片唐樓</span>
+                    <span class="feature-tag"><i class="fas fa-map-marked-alt"></i> 三大區域街道</span>
+                    <span class="feature-tag"><i class="fas fa-history"></i> 四個年代切換</span>
+                    <span class="feature-tag"><i class="fas fa-users"></i> 動態行人系統</span>
+                    <span class="feature-tag"><i class="fas fa-car"></i> 時代車輛模擬</span>
+                    <span class="feature-tag"><i class="fas fa-store"></i> 街頭小販攤檔</span>
+                </div>
+            </div>
+            
+            <div class="menu-buttons">
+                <button class="btn btn-quick-start" id="quick-start-btn">
+                    <i class="fas fa-bolt"></i> 快速開始
+                </button>
+                <button class="btn" id="start-btn" onclick="startSimulator()">
+                    <i class="fas fa-play-circle"></i> 開始懷舊街道漫遊
+                </button>
+                <button class="btn" onclick="showTutorial()">
+                    <i class="fas fa-question-circle"></i> 操作指南
+                </button>
+                <button class="btn" onclick="showAbout()">
+                    <i class="fas fa-info-circle"></i> 關於系統
+                </button>
+            </div>
+            
+            <div style="position: absolute; bottom: 20px; color: #888; font-size: 0.9rem; text-align: center; width: 100%; padding: 0 20px;">
+                <p>真實香港多區域街道重現 | 完整年代差異化設計 | 動態行人車輛系統 | 沉浸式聲效體驗</p>
+            </div>
+        </div>
+
+        <!-- 模擬器主頁面 -->
+        <div id="simulator-screen" class="screen">
+            <!-- 標題欄 -->
+            <div class="simulator-header">
+                <div class="simulator-title">
+                    <i class="fas fa-city" style="font-size: 1.5rem; color: var(--color-gold);"></i>
+                    <div>
+                        <h2>香港昔日懷舊歷史文化3D模擬系統</h2>
+                        <div style="color: #ccc; font-size: 0.8rem;">多區域街道重現 • 年代差異化體驗</div>
+                    </div>
+                </div>
+                
+                <div class="selector-container">
+                    <div class="district-selector">
+                        <button class="district-btn active" onclick="changeDistrict('shek_kip_mei')" id="district-shek_kip_mei">
+                            <i class="fas fa-home"></i> 石硤尾
+                        </button>
+                        <button class="district-btn" onclick="changeDistrict('sham_shui_po')" id="district-sham_shui_po">
+                            <i class="fas fa-store"></i> 深水埗
+                        </button>
+                        <button class="district-btn" onclick="changeDistrict('mong_kok')" id="district-mong_kok">
+                            <i class="fas fa-city"></i> 旺角
+                        </button>
+                    </div>
+                    
+                    <div class="era-selector">
+                        <button class="era-btn active" onclick="changeEra('60s')" id="era-60s">
+                            <i class="fas fa-landmark"></i> 60年代
+                        </button>
+                        <button class="era-btn" onclick="changeEra('70s')" id="era-70s">
+                            <i class="fas fa-tv"></i> 70年代
+                        </button>
+                        <button class="era-btn" onclick="changeEra('80s')" id="era-80s">
+                            <i class="fas fa-gamepad"></i> 80年代
+                        </button>
+                        <button class="era-btn" onclick="changeEra('90s')" id="era-90s">
+                            <i class="fas fa-mobile-alt"></i> 90年代
+                        </button>
+                    </div>
+                    
+                    <button class="favorite-btn" id="favorite-toggle" onclick="toggleFavorites()">
+                        <i class="fas fa-heart"></i> 我的最愛
+                    </button>
+                </div>
+                
+                <button class="btn" onclick="goHome()" style="padding: 6px 15px; font-size: 0.85rem; min-height: 40px;">
+                    <i class="fas fa-home"></i> 主頁
+                </button>
+            </div>
+
+            <!-- 收藏場景面板 -->
+            <div id="favorites-panel" class="favorites-panel">
+                <div style="color: var(--color-gold); font-weight: bold; margin-bottom: 10px;">
+                    <i class="fas fa-heart"></i> 我的最愛場景
+                </div>
+                <div id="favorites-list">
+                    <!-- 收藏場景會動態添加 -->
+                </div>
+                <div style="margin-top: 10px;">
+                    <div style="color: #ccc; font-size: 0.8rem; margin-bottom: 8px;">快捷場景：</div>
+                    <div class="quick-scenes">
+                        <button class="quick-scene-btn" onclick="loadQuickScene('night_80s')">
+                            <i class="fas fa-moon"></i> 80年代夜晚
+                        </button>
+                        <button class="quick-scene-btn" onclick="loadQuickScene('day_60s')">
+                            <i class="fas fa-sun"></i> 60年代中午
+                        </button>
+                        <button class="quick-scene-btn" onclick="loadQuickScene('rain_90s')">
+                            <i class="fas fa-cloud-rain"></i> 90年代雨天
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主內容區域 -->
+            <div class="simulator-main">
+                <!-- 3D視圖容器 -->
+                <div id="threed-container">
+                    <canvas id="main-canvas" tabindex="0"></canvas>
+                    
+                    <!-- 互動提示 -->
+                    <div id="interaction-hint" class="interaction-hint" style="display: none;"></div>
+                    
+                    <!-- 視錐體剔除提示 -->
+                    <div id="frustum-info" class="frustum-info" style="display: none;">
+                        視錐體優化中... 已隱藏 <span id="hidden-count">0</span> 個物件
+                    </div>
+                    
+                    <!-- 控制按鈕 -->
+                    <div class="control-buttons">
+                        <div class="control-button sound-toggle" onclick="toggleSound()" title="音效開關" id="sound-toggle">
+                            <i class="fas fa-volume-up" id="sound-icon"></i>
+                        </div>
+                        
+                        <div class="control-button" onclick="toggleFullscreen()" title="全屏模式" id="fullscreen-btn">
+                            <i class="fas fa-expand"></i>
+                        </div>
+                        
+                        <div class="control-button" onclick="saveCurrentScene()" title="保存當前場景" id="save-scene-btn">
+                            <i class="fas fa-save"></i>
+                        </div>
+                        
+                        <div class="control-button" onclick="togglePerformanceMode()" title="切換性能模式" id="performance-btn">
+                            <i class="fas fa-tachometer-alt"></i>
+                        </div>
+                    </div>
+                    
+                    <!-- HUD元素 -->
+                    <div id="controls-hint" class="hud-element">
+                        <h4><i class="fas fa-gamepad"></i> 控制指南</h4>
+                        <div style="margin-top: 8px; line-height: 1.6; font-size: 0.8rem;">
+                            <div><i class="fas fa-mouse-pointer"></i> 滑鼠拖曳：旋轉視角</div>
+                            <div><i class="fas fa-mouse"></i> 滾輪：縮放視角</div>
+                            <div><i class="fas fa-keyboard"></i> WASD：移動（第一人稱）</div>
+                            <div><i class="fas fa-hand-pointer"></i> 點擊物件：查看詳細資訊</div>
+                            <div><i class="fas fa-pause"></i> 空白鍵：暫停/繼續</div>
+                        </div>
+                    </div>
+                    
+                    <div id="zoom-display" class="hud-element">
+                        <i class="fas fa-search"></i> <span id="zoom-value">100%</span>
+                    </div>
+                    
+                    <div id="era-info" class="hud-element">
+                        <h4><i class="fas fa-calendar-alt"></i> 當前年代</h4>
+                        <div id="era-description" style="margin-top: 8px; line-height: 1.5; font-size: 0.8rem;"></div>
+                    </div>
+                    
+                    <div id="district-info" class="hud-element">
+                        <h4><i class="fas fa-map-marker-alt"></i> 當前區域</h4>
+                        <div id="district-description" style="margin-top: 8px; line-height: 1.5; font-size: 0.8rem;"></div>
+                    </div>
+                    
+                    <div id="detail-panel" class="hud-element">
+                        <h4 id="detail-title" style="font-size: 0.9rem; color: var(--color-gold);">
+                            <i class="fas fa-info-circle"></i> 物件詳細資訊
+                        </h4>
+                        <div id="detail-content" style="margin-top: 8px; line-height: 1.6; font-size: 0.85rem;">
+                            <!-- 詳細資訊內容會動態添加 -->
+                        </div>
+                        <div id="detail-history" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; color: #ccc; line-height: 1.4;">
+                            <!-- 歷史背景資訊會動態添加 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 第一人稱十字準星 -->
+                    <div id="crosshair" class="crosshair" style="display: none;"></div>
+
+                    <!-- 視角控制按鈕 -->
+                    <div class="view-controls">
+                        <button class="view-btn active" onclick="setViewMode('orbit')" title="軌道視角" id="view-orbit">
+                            <i class="fas fa-satellite"></i>
+                            <span style="font-size: 0.6rem;">軌道</span>
+                        </button>
+                        <button class="view-btn" onclick="setViewMode('fps')" title="第一人稱視角" id="view-fps">
+                            <i class="fas fa-walking"></i>
+                            <span style="font-size: 0.6rem;">第一人稱</span>
+                        </button>
+                        <button class="view-btn" onclick="stopAllMovement()" title="停止所有移動" id="stop-movement"><i class="fas fa-stop"></i><span>停止</span></button>
+                        <button class="view-btn" onclick="setViewMode('drone')" title="無人機俯瞰視角" id="view-drone">
+                            <i class="fas fa-helicopter"></i>
+                            <span style="font-size: 0.6rem;">無人機</span>
+                        </button>
+                        <button class="view-btn" onclick="focusBuilding()" title="聚焦建築物">
+                            <i class="fas fa-building"></i>
+                            <span style="font-size: 0.6rem;">聚焦</span>
+                        </button>
+                        <button class="view-btn" onclick="enterBuilding()" title="進入建築內部" id="enter-building-btn">
+                            <i class="fas fa-door-open"></i>
+                            <span style="font-size: 0.6rem;">進入</span>
+                        </button>
+                    </div>
+
+                    <!-- 移動控制（手機） -->
+                    <div class="mobile-controls" id="mobile-controls">
+                        <div class="mobile-joystick" id="joystick">
+                            <div class="mobile-joystick-handle" id="joystick-handle"></div>
+                        </div>
+                        <div class="mobile-buttons">
+                            <div class="mobile-btn" id="mobile-jump">
+                                <i class="fas fa-arrow-up"></i>
+                            </div>
+                            <div class="mobile-btn" id="mobile-interact">
+                                <i class="fas fa-hand-pointer"></i>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 狀態欄 -->
+                    <div class="status-bar">
+                        <div class="status-info">
+                            <div class="status-item">
+                                <i class="fas fa-eye"></i>
+                                <span id="view-mode-text">軌道視角</span>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-clock"></i>
+                                <span id="time-display">12:00</span>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-cube"></i>
+                                <span id="object-count">物件: 0</span>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-tachometer-alt"></i>
+                                <span id="fps-display">FPS: 0</span>
+                            </div>
+                            <div class="status-item">
+                                <i class="fas fa-map"></i>
+                                <span id="location-display">位置: 街道</span>
+                            </div>
+                        </div>
+                        <div style="color: #888; font-size: 0.75rem;">
+                            <span id="performance-mode">高性能模式</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 控制面板容器 -->
+                <div class="control-panel-container" id="control-panel-container">
+                    <!-- 控制面板切換按鈕 -->
+                    <button class="control-panel-toggle" id="panel-toggle">
+                        <i class="fas fa-chevron-up" id="panel-icon"></i> 控制面板
+                    </button>
+                    
+                    <!-- 控制面板 -->
+                    <div class="control-panel">
+                        <!-- 控制面板內容 - 可滾動區域 -->
+                        <div class="control-panel-content" id="control-panel-content">
+                            <!-- 視角控制 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-eye"></i> 視角控制</h3>
+                                <div class="slider-container">
+                                    <div class="slider-label">
+                                        <span>移動速度</span>
+                                        <span id="move-speed-value">1.0</span>
+                                    </div>
+                                    <input type="range" class="slider" id="move-speed-slider" min="0.5" max="3" value="1" step="0.1" oninput="updateMoveSpeed(this.value)">
+                                </div>
+                                <div class="slider-container">
+                                    <div class="slider-label">
+                                        <span>滾輪靈敏度</span>
+                                        <span id="zoom-sensitivity-value">1.0</span>
+                                    </div>
+                                    <input type="range" class="slider" id="zoom-sensitivity-slider" min="0.5" max="2" value="1" step="0.1" oninput="updateZoomSensitivity(this.value)">
+                                </div>
+                                <button class="control-btn" onclick="resetView()" style="width: 100%; margin-top: 10px;">
+                                    <i class="fas fa-undo"></i> 重置視角與位置
+                                </button>
+                            </div>
+
+                            <!-- 樓層控制 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-layer-group"></i> 樓層控制</h3>
+                                <div class="button-group">
+                                    <button class="control-btn active" onclick="toggleFloor('ground')" id="floor-ground">
+                                        <i class="fas fa-home"></i><br>地鋪
+                                    </button>
+                                    <button class="control-btn" onclick="toggleFloor('residential')" id="floor-residential">
+                                        <i class="fas fa-bed"></i><br>住宅層
+                                    </button>
+                                    <button class="control-btn" onclick="toggleFloor('rooftop')" id="floor-rooftop">
+                                        <i class="fas fa-warehouse"></i><br>天台
+                                    </button>
+                                </div>
+                                <div style="margin-top: 10px;">
+                                    <button class="control-btn" onclick="showAllFloors()" style="width: 48%; margin-right: 2%;">
+                                        顯示所有
+                                    </button>
+                                    <button class="control-btn" onclick="hideAllFloors()" style="width: 48%;">
+                                        隱藏所有
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 體驗模式 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-sliders-h"></i> 體驗模式</h3>
+                                <div class="mode-selector">
+                                    <button class="mode-btn active" onclick="setExperienceMode('free')" id="mode-free">
+                                        <i class="fas fa-running"></i>
+                                        <span>自由探索</span>
+                                    </button>
+                                    <button class="mode-btn" onclick="setExperienceMode('compare')" id="mode-compare">
+                                        <i class="fas fa-exchange-alt"></i>
+                                        <span>年代對比</span>
+                                    </button>
+                                    <button class="mode-btn" onclick="setExperienceMode('guided')" id="mode-guided">
+                                        <i class="fas fa-map-signs"></i>
+                                        <span>導覽模式</span>
+                                    </button>
+                                    <button class="mode-btn" onclick="setExperienceMode('interaction')" id="mode-interaction">
+                                        <i class="fas fa-handshake"></i>
+                                        <span>互動模式</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 場景設置 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-adjust"></i> 場景設置</h3>
+                                
+                                <div class="slider-container">
+                                    <div class="slider-label">
+                                        <span>時間</span>
+                                        <span id="time-value">12:00</span>
+                                    </div>
+                                    <input type="range" class="slider" id="time-slider" min="0" max="24" value="12" step="0.5" oninput="updateTime(this.value)">
+                                </div>
+
+                                <div class="slider-container">
+                                    <div class="slider-label">
+                                        <span>天氣</span>
+                                        <span id="weather-value">晴天</span>
+                                    </div>
+                                    <input type="range" class="slider" id="weather-slider" min="0" max="3" value="0" step="1" oninput="updateWeather(this.value)">
+                                </div>
+                                
+                                <div class="button-group" style="margin-top: 15px;">
+                                    <button class="control-btn" onclick="setTimePreset('morning')">
+                                        <i class="fas fa-sun"></i><br>早晨
+                                    </button>
+                                    <button class="control-btn" onclick="setTimePreset('noon')">
+                                        <i class="fas fa-sun"></i><br>中午
+                                    </button>
+                                    <button class="control-btn" onclick="setTimePreset('evening')">
+                                        <i class="fas fa-sunset"></i><br>黃昏
+                                    </button>
+                                    <button class="control-btn" onclick="setTimePreset('night')">
+                                        <i class="fas fa-moon"></i><br>夜晚
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 建築細節控制 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-building"></i> 建築細節</h3>
+                                <div class="button-group">
+                                    <button class="control-btn active" onclick="toggleDetail('windows')" id="detail-windows">
+                                        <i class="fas fa-th"></i><br>窗戶
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('balconies')" id="detail-balconies">
+                                        <i class="fas fa-door-open"></i><br>陽台
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('aircon')" id="detail-aircon">
+                                        <i class="fas fa-wind"></i><br>冷氣機
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('signs')" id="detail-signs">
+                                        <i class="fas fa-sign"></i><br>招牌
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('rooftop')" id="detail-rooftop">
+                                        <i class="fas fa-home"></i><br>天台
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('shops')" id="detail-shops">
+                                        <i class="fas fa-store-alt"></i><br>地鋪
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('interior')" id="detail-interior">
+                                        <i class="fas fa-couch"></i><br>室內
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('furniture')" id="detail-furniture">
+                                        <i class="fas fa-chair"></i><br>傢具
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleDetail('pipes')" id="detail-pipes">
+                                        <i class="fas fa-tint"></i><br>水管
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 街道元素控制 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-road"></i> 街道元素</h3>
+                                <div class="button-group">
+                                    <button class="control-btn active" onclick="toggleStreetElement('pedestrians')" id="element-pedestrians">
+                                        <i class="fas fa-walking"></i><br>行人
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('vehicles')" id="element-vehicles">
+                                        <i class="fas fa-car"></i><br>車輛
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('stalls')" id="element-stalls">
+                                        <i class="fas fa-store"></i><br>攤檔
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('lampposts')" id="element-lampposts">
+                                        <i class="fas fa-lightbulb"></i><br>街燈
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('trees')" id="element-trees">
+                                        <i class="fas fa-tree"></i><br>樹木
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('phonebooth')" id="element-phonebooth">
+                                        <i class="fas fa-phone"></i><br>電話亭
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('benches')" id="element-benches">
+                                        <i class="fas fa-chair"></i><br>長椅
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('bikes')" id="element-bikes">
+                                        <i class="fas fa-bicycle"></i><br>單車
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleStreetElement('trash')" id="element-trash">
+                                        <i class="fas fa-trash-alt"></i><br>垃圾桶
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- 動畫控制 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-play-circle"></i> 動畫控制</h3>
+                                <div class="button-group">
+                                    <button class="control-btn active" onclick="toggleAnimation('pedestrian')" id="anim-pedestrian">
+                                        <i class="fas fa-user"></i><br>行人動作
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleAnimation('vehicle')" id="anim-vehicle">
+                                        <i class="fas fa-truck"></i><br>車輛移動
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleAnimation('neon')" id="anim-neon">
+                                        <i class="fas fa-lightbulb"></i><br>霓虹閃爍
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleAnimation('traffic')" id="anim-traffic">
+                                        <i class="fas fa-traffic-light"></i><br>交通燈
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleAnimation('shop')" id="anim-shop">
+                                        <i class="fas fa-store"></i><br>店鋪動畫
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleAnimation('weather')" id="anim-weather">
+                                        <i class="fas fa-cloud-sun"></i><br>天氣效果
+                                    </button>
+                                </div>
+                                
+                                <div class="slider-container">
+                                    <div class="slider-label">
+                                        <span>動畫速度</span>
+                                        <span id="animation-speed-value">1.0x</span>
+                                    </div>
+                                    <input type="range" class="slider" id="animation-speed-slider" min="0.5" max="3" value="1" step="0.1" oninput="updateAnimationSpeed(this.value)">
+                                </div>
+                            </div>
+
+                            <!-- 音效設置 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-volume-up"></i> 音效設置</h3>
+                                <div class="button-group">
+                                    <button class="control-btn active" onclick="toggleSoundType('ambient')" id="sound-ambient">
+                                        <i class="fas fa-music"></i><br>環境音
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleSoundType('traffic')" id="sound-traffic">
+                                        <i class="fas fa-car"></i><br>車聲
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleSoundType('people')" id="sound-people">
+                                        <i class="fas fa-users"></i><br>人聲
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleSoundType('vendor')" id="sound-vendor">
+                                        <i class="fas fa-bullhorn"></i><br>叫賣聲
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleSoundType('shop')" id="sound-shop">
+                                        <i class="fas fa-store"></i><br>店鋪聲
+                                    </button>
+                                    <button class="control-btn active" onclick="toggleSoundType('weather')" id="sound-weather">
+                                        <i class="fas fa-cloud-rain"></i><br>天氣聲
+                                    </button>
+                                </div>
+                                
+                                <div class="slider-container">
+                                    <div class="slider-label">
+                                        <span>主音量</span>
+                                        <span id="volume-value">70%</span>
+                                    </div>
+                                    <input type="range" class="slider" id="volume-slider" min="0" max="100" value="70" step="5" oninput="updateVolume(this.value)">
+                                </div>
+                            </div>
+
+                            <!-- 系統控制 -->
+                            <div class="control-section">
+                                <h3><i class="fas fa-cog"></i> 系統控制</h3>
+                                <button class="control-btn" onclick="saveCurrentScene()" style="width: 100%; margin-bottom: 10px;">
+                                    <i class="fas fa-save"></i> 保存當前場景
+                                </button>
+                                <button class="control-btn" onclick="loadLastScene()" style="width: 100%; margin-bottom: 10px;">
+                                    <i class="fas fa-history"></i> 載入上次場景
+                                </button>
+                                <button class="control-btn" onclick="takeScreenshot()" style="width: 100%; margin-bottom: 10px;">
+                                    <i class="fas fa-camera"></i> 截圖保存
+                                </button>
+                                <button class="control-btn" onclick="randomTour()" style="width: 100%; margin-bottom: 10px;">
+                                    <i class="fas fa-random"></i> 隨機遊覽
+                                </button>
+                                <button class="control-btn" onclick="togglePerformanceMode()" style="width: 100%; margin-bottom: 10px;">
+                                    <i class="fas fa-tachometer-alt"></i> 切換性能模式
+                                </button>
+                                <button class="control-btn" onclick="showControlsHelp()" style="width: 100%;">
+                                    <i class="fas fa-question-circle"></i> 顯示控制幫助
+                                </button>
+                            </div>
+                            
+                            <!-- 空白區域，確保滾動順暢 -->
+                            <div style="height: 20px;"></div>
+                        </div>
+                        
+                        <!-- 滾動提示 -->
+                        <div class="scroll-hint" id="scroll-hint">
+                            <i class="fas fa-chevron-down"></i> 向上滑動查看更多控制選項
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // 全局材質管理器（性能優化）
+        // ============================================
+        const MaterialManager = {
+            // 建築材質
+            brickMaterial: new THREE.MeshStandardMaterial({
+                color: 0x8B4513,
+                roughness: 0.8,
+                metalness: 0.1
+            }),
+            
+            concreteMaterial: new THREE.MeshStandardMaterial({
+                color: 0x9E9E9E,
+                roughness: 0.8,
+                metalness: 0.1
+            }),
+            
+            tileMaterial: new THREE.MeshStandardMaterial({
+                color: 0xE0E0E0,
+                roughness: 0.7,
+                metalness: 0.2
+            }),
+            
+            modernMaterial: new THREE.MeshStandardMaterial({
+                color: 0xF5F5F5,
+                roughness: 0.6,
+                metalness: 0.3
+            }),
+            
+            // 窗戶材質
+            windowMaterial: new THREE.MeshStandardMaterial({
+                color: 0x87CEEB,
+                transparent: true,
+                opacity: 0.6,
+                roughness: 0.1,
+                metalness: 0.8
+            }),
+            
+            // 霓虹招牌材質
+            neonMaterials: {
+                red: new THREE.MeshStandardMaterial({
+                    color: 0xff0040,
+                    emissive: 0xff0040,
+                    emissiveIntensity: 0.4,
+                    roughness: 0.5
+                }),
+                blue: new THREE.MeshStandardMaterial({
+                    color: 0x00ffff,
+                    emissive: 0x00ffff,
+                    emissiveIntensity: 0.4,
+                    roughness: 0.5
+                }),
+                green: new THREE.MeshStandardMaterial({
+                    color: 0x00ff00,
+                    emissive: 0x00ff00,
+                    emissiveIntensity: 0.4,
+                    roughness: 0.5
+                }),
+                yellow: new THREE.MeshStandardMaterial({
+                    color: 0xffff00,
+                    emissive: 0xffff00,
+                    emissiveIntensity: 0.4,
+                    roughness: 0.5
+                })
+            },
+            
+            // 地面材質
+            roadMaterial: new THREE.MeshStandardMaterial({
+                color: 0x3a3a3a,
+                roughness: 0.8,
+                metalness: 0.2
+            }),
+            
+            pavementMaterial: new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                roughness: 0.7,
+                metalness: 0.1
+            }),
+            
+            // 其他材質
+            woodMaterial: new THREE.MeshStandardMaterial({
+                color: 0x8B7355,
+                roughness: 0.9,
+                metalness: 0.0
+            }),
+            
+            metalMaterial: new THREE.MeshStandardMaterial({
+                color: 0xC0C0C0,
+                roughness: 0.4,
+                metalness: 0.8
+            }),
+            
+            glassMaterial: new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0.3,
+                roughness: 0.1,
+                metalness: 0.9
+            }),
+            
+            // 獲取年代對應的建築材質
+            getBuildingMaterial: function(era) {
+                switch(era) {
+                    case '60s': return this.brickMaterial;
+                    case '70s': return this.concreteMaterial;
+                    case '80s': return this.tileMaterial;
+                    case '90s': return this.modernMaterial;
+                    default: return this.brickMaterial;
+                }
+            },
+            
+            // 獲取隨機霓虹材質
+            getRandomNeonMaterial: function() {
+                const colors = Object.keys(this.neonMaterials);
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                return this.neonMaterials[randomColor];
+            }
+        };
+
+        // ============================================
+        // 性能優化配置
+        // ============================================
+        const Performance = {
+            isMobile: /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent),
+            isLowPerformance: false,
+            isHighPerformanceMode: false,
+            frameCount: 0,
+            lastFPSUpdate: 0,
+            targetFPS: 60,
+            currentFPS: 0,
+            
+            // 視錐體剔除相關
+            frustum: null,
+            hiddenObjects: 0,
+            totalObjects: 0,
+            
+            detectPerformance: function() {
+                const memory = performance.memory;
+                const cores = navigator.hardwareConcurrency || 2;
+                const isSlow = this.isMobile || cores < 4;
+                
+                this.isLowPerformance = isSlow;
+                console.log(`性能檢測: ${this.isMobile ? '移動設備' : '桌面設備'}, CPU核心: ${cores}, 低性能模式: ${isSlow}`);
+                
+                if (this.isLowPerformance) {
+                    this.applyPerformanceMode();
+                }
+                
+                // 初始化視錐體
+                this.frustum = new THREE.Frustum();
+            },
+            
+            applyPerformanceMode: function() {
+                document.body.classList.add('performance-mode');
+                
+                if (Config) {
+                    Config.PERFORMANCE.maxPedestrians = 15;
+                    Config.PERFORMANCE.maxVehicles = 8;
+                    Config.PERFORMANCE.shadowQuality = 'low';
+                    Config.PERFORMANCE.renderDistance = 100;
+                }
+                
+                this.showNotification('偵測到性能問題，已自動調整畫質以提升流暢度', 'warning');
+            },
+            
+            togglePerformanceMode: function() {
+                this.isHighPerformanceMode = !this.isHighPerformanceMode;
+                
+                if (this.isHighPerformanceMode) {
+                    document.body.classList.remove('performance-mode');
+                    if (Config) {
+                        Config.PERFORMANCE.maxPedestrians = 30;
+                        Config.PERFORMANCE.maxVehicles = 15;
+                        Config.PERFORMANCE.shadowQuality = 'high';
+                        Config.PERFORMANCE.renderDistance = 200;
+                    }
+                    this.showNotification('已啟用高性能模式，享受更佳畫質', 'success');
+                } else {
+                    this.applyPerformanceMode();
+                }
+                
+                // 更新UI
+                const performanceModeElement = document.getElementById('performance-mode');
+                if (performanceModeElement) {
+                    performanceModeElement.textContent = this.isHighPerformanceMode ? '高性能模式' : '平衡模式';
+                }
+                
+                return this.isHighPerformanceMode;
+            },
+            
+            updateFPS: function() {
+                this.frameCount++;
+                const now = performance.now();
+                
+                if (now >= this.lastFPSUpdate + 1000) {
+                    this.currentFPS = this.frameCount;
+                    this.frameCount = 0;
+                    this.lastFPSUpdate = now;
+                    
+                    const fpsDisplay = document.getElementById('fps-display');
+                    if (fpsDisplay) {
+                        fpsDisplay.textContent = `FPS: ${this.currentFPS}`;
+                    }
+                    
+                    // 動態調整性能
+                    if (this.currentFPS < 30 && !this.isLowPerformance && !this.isHighPerformanceMode) {
+                        this.isLowPerformance = true;
+                        this.applyPerformanceMode();
+                    }
+                }
+            },
+            
+            // 視錐體剔除
+            updateFrustum: function(camera) {
+                if (!this.frustum || !camera) return;
+                
+                this.frustum.setFromProjectionMatrix(
+                    new THREE.Matrix4().multiplyMatrices(
+                        camera.projectionMatrix,
+                        camera.matrixWorldInverse
+                    )
+                );
+            },
+            
+            isInFrustum: function(object) {
+                if (!this.frustum || !object) return true;
+                
+                const sphere = new THREE.Sphere();
+                if (object.geometry) {
+                    object.geometry.computeBoundingSphere();
+                    sphere.copy(object.geometry.boundingSphere);
+                    sphere.applyMatrix4(object.matrixWorld);
+                }
+                
+                return this.frustum.intersectsSphere(sphere);
+            },
+            
+            optimizeScene: function(scene, camera) {
+                if (!scene || !camera) return;
+                
+                this.updateFrustum(camera);
+                this.hiddenObjects = 0;
+                this.totalObjects = 0;
+                
+                scene.traverse((object) => {
+                    if (object instanceof THREE.Mesh && object.userData.optimizable !== false) {
+                        this.totalObjects++;
+                        const isVisible = this.isInFrustum(object);
+                        
+                        if (object.visible !== isVisible) {
+                            object.visible = isVisible;
+                            if (!isVisible) this.hiddenObjects++;
+                        }
+                    }
+                });
+                
+                // 更新顯示
+                const frustumInfo = document.getElementById('frustum-info');
+                if (frustumInfo) {
+                    if (this.hiddenObjects > 0 && Performance.isHighPerformanceMode) {
+                        frustumInfo.style.display = 'block';
+                        document.getElementById('hidden-count').textContent = this.hiddenObjects;
+                    } else {
+                        frustumInfo.style.display = 'none';
+                    }
+                }
+            },
+            
+            showNotification: function(message, type = 'info') {
+                const notification = document.getElementById('notification');
+                const messageElement = document.getElementById('notification-message');
+                const retryButton = document.getElementById('notification-retry');
+                
+                if (!notification || !messageElement) return;
+                
+                notification.className = 'notification';
+                notification.classList.add(type);
+                messageElement.textContent = message;
+                retryButton.style.display = 'none';
+                
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, 3000);
+            }
+        };
+
+        // ============================================
+        // 系統配置
+        // ============================================
+        const Config = {
+            // 場景尺寸
+            STREET_WIDTH: 25,
+            STREET_LENGTH: 120,
+            BUILDING_WIDTH: 12,
+            BUILDING_DEPTH: 15,
+            BUILDING_HEIGHT: 30,
+            FLOOR_HEIGHT: 3,
+            
+            // 區域配置
+            DISTRICTS: {
+                shek_kip_mei: {
+                    name: '石硤尾',
+                    description: '早期徙置區風格，低矮磚房、公共走廊、樸素市井氛圍',
+                    buildingCount: 8,
+                    buildingStyle: 'resettlement',
+                    density: 'high',
+                    streetWidth: 18,
+                    hasTongLau: true,
+                    hasResettlement: true,
+                    hasMarket: true,
+                    features: ['徙置大廈', '公共走廊', '共用廚房', '水龍頭', '晾衫竹']
+                },
+                sham_shui_po: {
+                    name: '深水埗',
+                    description: '市井攤檔文化，舊式雜貨店、街邊小販、濃厚生活氣息',
+                    buildingCount: 10,
+                    buildingStyle: 'mixed',
+                    density: 'very_high',
+                    streetWidth: 20,
+                    hasTongLau: true,
+                    hasResettlement: false,
+                    hasMarket: true,
+                    features: ['布販攤檔', '電子零件', '五金鋪', '排檔', '茶餐廳']
+                },
+                mong_kok: {
+                    name: '旺角',
+                    description: '密集商鋪與霓虹招牌，繁華街景、現代化商業氛圍',
+                    buildingCount: 12,
+                    buildingStyle: 'commercial',
+                    density: 'extreme',
+                    streetWidth: 22,
+                    hasTongLau: true,
+                    hasResettlement: false,
+                    hasMarket: false,
+                    features: ['霓虹招牌', '鐘錶珠寶', '電器影音', '藥房', '金鋪']
+                }
+            },
+            
+            // 年代配置
+            ERAS: {
+                '60s': {
+                    name: '60年代',
+                    description: '樸素市井 • 紅磚唐樓 • 木製招牌 • 簡單服裝',
+                    wallColor: 0x8B4513,
+                    windowType: 'small_wood',
+                    signType: 'wood',
+                    vehicleDensity: 0.2,
+                    neonDensity: 0.1,
+                    shopTypes: ['雜貨店', '糧油店', '理髮廳', '裁縫店'],
+                    features: ['紅磚外牆', '鐵窗花', '木製招牌', '公共水龍頭', '自行車'],
+                    populationDensity: 0.3
+                },
+                '70s': {
+                    name: '70年代',
+                    description: '早期商業 • 混凝土外牆 • 小型霓虹 • 色彩豐富',
+                    wallColor: 0x9E9E9E,
+                    windowType: 'medium_iron',
+                    signType: 'simple_neon',
+                    vehicleDensity: 0.4,
+                    neonDensity: 0.3,
+                    shopTypes: ['士多', '冰室', '電器行', '唱片鋪'],
+                    features: ['混凝土外牆', '鐵窗框', '小型霓虹', '公用電話亭', '巴士'],
+                    populationDensity: 0.5
+                },
+                '80s': {
+                    name: '80年代',
+                    description: '繁華街景 • 白色瓷磚 • 大量霓虹 • 現代服裝',
+                    wallColor: 0xE0E0E0,
+                    windowType: 'large_iron',
+                    signType: 'bright_neon',
+                    vehicleDensity: 0.7,
+                    neonDensity: 0.8,
+                    shopTypes: ['遊戲機中心', '錄影帶店', '時裝店', '快餐店'],
+                    features: ['白色瓷磚', '鐵窗框', '霓虹招牌', '遊戲機中心', '私家車'],
+                    populationDensity: 0.8
+                },
+                '90s': {
+                    name: '90年代',
+                    description: '現代過渡 • 鋁窗防盜網 • 燈箱廣告 • 便利店',
+                    wallColor: 0xF5F5F5,
+                    windowType: 'aluminum',
+                    signType: 'lightbox',
+                    vehicleDensity: 0.9,
+                    neonDensity: 0.6,
+                    shopTypes: ['便利店', '手機店', '網吧', '連鎖店'],
+                    features: ['鋁窗', '防盜網', '燈箱廣告', '便利店', '的士'],
+                    populationDensity: 0.9
+                }
+            },
+            
+            // 性能設置
+            PERFORMANCE: {
+                maxPedestrians: 25,
+                maxVehicles: 12,
+                shadowQuality: 'medium',
+                renderDistance: 150,
+                lodDistance: 50
+            }
+        };
+
+        // ============================================
+        // 遊戲狀態
+        // ============================================
+        const GameState = {
+            // Three.js核心
+            scene: null,
+            camera: null,
+            renderer: null,
+            controls: null,
+            raycaster: null,
+            
+            // 當前狀態
+            currentDistrict: 'shek_kip_mei',
+            currentEra: '60s',
+            viewMode: 'orbit',
+            experienceMode: 'free',
+            currentTime: 12,
+            currentWeather: 'sunny',
+            
+            // 場景物件
+            buildings: [],
+            streetObjects: [],
+            pedestrians: [],
+            vehicles: [],
+            interactiveObjects: [],
+            floors: [],
+            
+            // 動畫
+            animationFrame: null,
+            clock: new THREE.Clock(),
+            time: 12,
+            animationSpeed: 1.0,
+            moveSpeed: 1.0,
+            zoomSensitivity: 1.0,
+            
+            // 控制狀態
+            input: {
+                keys: {},
+                mouse: { x: 0, y: 0, down: false },
+                touch: { startX: 0, startY: 0, isMoving: false }
+            },
+            
+            // 細節開關
+            details: {
+                windows: true,
+                balconies: true,
+                aircon: true,
+                signs: true,
+                rooftop: true,
+                shops: true,
+                interior: false,
+                furniture: false,
+                pipes: true
+            },
+            
+            // 街道元素開關
+            streetElements: {
+                pedestrians: true,
+                vehicles: true,
+                stalls: true,
+                lampposts: true,
+                trees: true,
+                phonebooth: true,
+                benches: true,
+                bikes: true,
+                trash: true
+            },
+            
+            // 動畫開關
+            animations: {
+                pedestrian: true,
+                vehicle: true,
+                neon: true,
+                traffic: true,
+                shop: true,
+                weather: true
+            },
+            
+            // 音效設置
+            soundEnabled: true,
+            soundTypes: {
+                ambient: true,
+                traffic: true,
+                people: true,
+                vendor: true,
+                shop: true,
+                weather: true
+            },
+            volume: 0.7,
+            
+            // 樓層顯示狀態
+            floorVisibility: {
+                ground: true,
+                residential: false,
+                rooftop: false
+            },
+            
+            // 其他
+            isFullscreen: false,
+            isPanelOpen: true, autoCruise: false,
+            isInitialized: false,
+            isInBuilding: false,
+            currentBuilding: null,
+            favorites: [],
+            lastScene: null,
+            interactionHint: null
+        };
+
+        // ============================================
+        // 頁面導航
+        // ============================================
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+            
+            setTimeout(() => {
+                onWindowResize();
+            }, 100);
+        }
+
+        // 快速開始
+        document.getElementById('quick-start-btn').addEventListener('click', function() {
+            startSimulator();
+            
+            // 設置預設場景
+            setTimeout(() => {
+                changeDistrict('mong_kok');
+                changeEra('80s');
+                setTimePreset('night');
+                setViewMode('drone');
+                Performance.showNotification('快速開始：80年代旺角夜景已載入', 'success');
+            }, 500);
+        });
+
+        async function startSimulator() {
+            showScreen('simulator-screen');
+            
+            if (!GameState.isInitialized) {
+                await initThreeJS();
+                GameState.isInitialized = true;
+            }
+            
+            // 載入上次場景
+            loadLastScene();
+            
+            const canvas = document.getElementById('main-canvas');
+            canvas.focus();
+        }
+
+        function goHome() {
+            showScreen('home-screen');
+        }
+
+        function showTutorial() {
+            const tutorialDiv = document.createElement('div');
+            tutorialDiv.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.95); color: white; padding: 25px;
+                border-radius: 12px; border: 3px solid var(--color-gold);
+                max-width: 600px; width: 90%; max-height: 80vh; overflow-y: auto;
+                z-index: 10000; backdrop-filter: blur(10px); box-shadow: 0 0 30px rgba(255,204,0,0.3);
+            `;
+            tutorialDiv.innerHTML = `
+                <h3 style="color: var(--color-gold); margin-bottom: 20px; text-align: center;">
+                    <i class="fas fa-graduation-cap"></i> 香港昔日懷舊街道模擬系統操作指南
+                </h3>
+                <div style="line-height: 1.8; font-size: 14px;">
+                    <h4 style="color: #4CAF50; margin: 15px 0 10px 0;"><i class="fas fa-mouse-pointer"></i> 基本控制</h4>
+                    <p><strong>軌道視角（預設）</strong></p>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li>滑鼠左鍵拖曳：旋轉視角</li>
+                        <li>滑鼠滾輪：縮放視角</li>
+                        <li>滑鼠右鍵拖曳：平移視角</li>
+                    </ul>
+                    
+                    <p><strong>第一人稱視角</strong></p>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li>WASD 或方向鍵：移動</li>
+                        <li>滑鼠移動：環視四周</li>
+                        <li>空白鍵：跳躍（如適用）</li>
+                        <li>E鍵：與物件互動</li>
+                    </ul>
+                    
+                    <p><strong>無人機視角</strong></p>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li>自動巡航模式</li>
+                        <li>WASD：手動控制飛行</li>
+                        <li>空格：上升，Ctrl：下降</li>
+                    </ul>
+                    
+                    <h4 style="color: #2196F3; margin: 15px 0 10px 0;"><i class="fas fa-map"></i> 場景探索</h4>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li><strong>切換區域：</strong>石硤尾、深水埗、旺角</li>
+                        <li><strong>切換年代：</strong>60、70、80、90年代</li>
+                        <li><strong>進入建築：</strong>點擊「進入」按鈕進入唐樓內部</li>
+                        <li><strong>放大縮小：</strong>滾輪或觸控縮放，最大可看清窗戶細節</li>
+                    </ul>
+                    
+                    <h4 style="color: #FF9800; margin: 15px 0 10px 0;"><i class="fas fa-star"></i> 特色功能</h4>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li><strong>我的最愛：</strong>保存喜愛的場景設置</li>
+                        <li><strong>快速場景：</strong>一鍵載入預設場景</li>
+                        <li><strong>年代對比：</strong>比較不同年代同一位置變化</li>
+                        <li><strong>天氣系統：</strong>晴天、陰天、雨天切換</li>
+                        <li><strong>時間控制：</strong>調整日夜時間</li>
+                    </ul>
+                    
+                    <h4 style="color: #9C27B0; margin: 15px 0 10px 0;"><i class="fas fa-hand-point-up"></i> 互動提示</h4>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li>滑鼠懸停在可互動物件時會顯示提示</li>
+                        <li>點擊建築元素查看詳細資訊與歷史背景</li>
+                        <li>與小販攤檔、電話亭等可產生互動聲效</li>
+                    </ul>
+                    
+                    <p style="text-align: center; margin-top: 20px; color: #ccc;">
+                        <i class="fas fa-lightbulb"></i> 提示：按 ESC 鍵可隨時返回主頁面
+                    </p>
+                </div>
+                <button onclick="this.parentElement.remove()" style="
+                    background: linear-gradient(135deg, var(--color-primary), #b30000);
+                    color: white; border: none; padding: 12px 25px; border-radius: 8px;
+                    margin-top: 20px; cursor: pointer; width: 100%; font-size: 1rem;
+                    font-weight: bold; transition: all 0.3s ease;
+                " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 20px rgba(230, 0, 18, 0.4)';" 
+                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                    <i class="fas fa-check-circle"></i> 我明白了，開始探索！
+                </button>
+            `;
+            document.body.appendChild(tutorialDiv);
+        }
+
+        function showAbout() {
+            const aboutDiv = document.createElement('div');
+            aboutDiv.style.cssText = `
+                position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                background: rgba(0,0,0,0.95); color: white; padding: 25px;
+                border-radius: 12px; border: 3px solid var(--color-gold);
+                max-width: 700px; width: 90%; max-height: 80vh; overflow-y: auto;
+                z-index: 10000; backdrop-filter: blur(10px); box-shadow: 0 0 30px rgba(255,204,0,0.3);
+            `;
+            aboutDiv.innerHTML = `
+                <h3 style="color: var(--color-gold); margin-bottom: 20px; text-align: center;">
+                    <i class="fas fa-info-circle"></i> 關於香港昔日懷舊歷史文化3D模擬系統
+                </h3>
+                
+                <div style="line-height: 1.8; font-size: 14px;">
+                    <h4 style="color: #4CAF50; margin: 15px 0 10px 0;">系統介紹</h4>
+                    <p>本系統是一個沉浸式的香港歷史文化3D模擬平台，致力於重現60-90年代香港三大區域的街道風貌與生活場景。通過先進的WebGL技術，讓使用者能夠穿越時空，親身體驗香港昔日的市井生活與文化變遷。</p>
+                    
+                    <h4 style="color: #2196F3; margin: 15px 0 10px 0;">區域特色</h4>
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h5 style="color: var(--color-gold); margin-bottom: 8px;"><i class="fas fa-home"></i> 石硤尾</h5>
+                        <p>重現香港早期徙置區風貌，展現低矮磚房、公共走廊、共用廚廁等獨特建築特色，呈現樸素的市井生活氛圍。</p>
+                    </div>
+                    
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h5 style="color: var(--color-gold); margin-bottom: 8px;"><i class="fas fa-store"></i> 深水埗</h5>
+                        <p>重現市井攤檔文化，包含布販、電子零件、五金鋪等特色店鋪，展現濃厚的生活氣息與傳統商業活動。</p>
+                    </div>
+                    
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                        <h5 style="color: var(--color-gold); margin-bottom: 8px;"><i class="fas fa-city"></i> 旺角</h5>
+                        <p>重現繁華商業街景，包含密集的霓虹招牌、鐘錶珠寶店、電器影音鋪等，展現香港商業中心的現代化進程。</p>
+                    </div>
+                    
+                    <h4 style="color: #FF9800; margin: 15px 0 10px 0;">年代特色</h4>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px;">
+                        <div style="background: rgba(139,69,19,0.2); padding: 10px; border-radius: 6px; border-left: 3px solid #8B4513;">
+                            <strong>60年代：</strong>紅磚唐樓、鐵窗花、木製招牌
+                        </div>
+                        <div style="background: rgba(158,158,158,0.2); padding: 10px; border-radius: 6px; border-left: 3px solid #9E9E9E;">
+                            <strong>70年代：</strong>混凝土外牆、小型霓虹、公用電話
+                        </div>
+                        <div style="background: rgba(224,224,224,0.2); padding: 10px; border-radius: 6px; border-left: 3px solid #E0E0E0;">
+                            <strong>80年代：</strong>白色瓷磚、霓虹招牌、遊戲機中心
+                        </div>
+                        <div style="background: rgba(245,245,245,0.2); padding: 10px; border-radius: 6px; border-left: 3px solid #F5F5F5;">
+                            <strong>90年代：</strong>鋁窗防盜網、燈箱廣告、便利店
+                        </div>
+                    </div>
+                    
+                    <h4 style="color: #9C27B0; margin: 15px 0 10px 0;">技術特色</h4>
+                    <ul style="padding-left: 20px; margin-bottom: 15px;">
+                        <li><strong>高性能優化：</strong>視錐體剔除、材質共用、動態載入</li>
+                        <li><strong>沉浸式體驗：</strong>多視角切換、聲效系統、天氣系統</li>
+                        <li><strong>歷史準確性：</strong>基於歷史資料的建築與物件設計</li>
+                        <li><strong>跨平台支持：</strong>桌面與移動設備全面優化</li>
+                        <li><strong>互動功能：</strong>物件互動、場景保存、導覽模式</li>
+                    </ul>
+                    
+                    <h4 style="color: #00BCD4; margin: 15px 0 10px 0;">開發團隊</h4>
+                    <p>本系統由熱愛香港歷史文化的開發團隊製作，結合建築學、歷史學與3D技術專家，旨在保存與傳播香港獨特的歷史文化遺產。</p>
+                    
+                    <p style="text-align: center; margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); color: var(--color-gold);">
+                        <i class="fas fa-heart"></i> 讓我們一起探索香港的懷舊歲月
+                    </p>
+                </div>
+                
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button onclick="showTutorial()" style="
+                        background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.3);
+                        padding: 10px 20px; border-radius: 6px; cursor: pointer; flex: 1;
+                    ">
+                        <i class="fas fa-graduation-cap"></i> 查看教程
+                    </button>
+                    <button onclick="this.parentElement.parentElement.remove()" style="
+                        background: linear-gradient(135deg, var(--color-primary), #b30000);
+                        color: white; border: none; padding: 10px 20px; border-radius: 6px;
+                        cursor: pointer; flex: 1; font-weight: bold;
+                    ">
+                        <i class="fas fa-play-circle"></i> 開始體驗
+                    </button>
+                </div>
+            `;
+            document.body.appendChild(aboutDiv);
+        }
+
+        // ============================================
+        // 滾動管理
+        // ============================================
+        function setupScrollManagement() {
+            const panelContent = document.getElementById('control-panel-content');
+            const scrollHint = document.getElementById('scroll-hint');
+            
+            if (!panelContent || !scrollHint) return;
+            
+            function updateScrollHint() {
+                const isAtBottom = panelContent.scrollHeight - panelContent.scrollTop <= panelContent.clientHeight + 10;
+                if (isAtBottom) {
+                    scrollHint.innerHTML = '<i class="fas fa-chevron-up"></i> 向上滑動查看更多控制選項';
+                } else {
+                    scrollHint.innerHTML = '<i class="fas fa-chevron-down"></i> 向下滑動查看更多控制選項';
+                }
+                
+                if (panelContent.scrollHeight <= panelContent.clientHeight) {
+                    scrollHint.style.display = 'none';
+                } else {
+                    scrollHint.style.display = 'flex';
+                }
+            }
+            
+            panelContent.addEventListener('scroll', updateScrollHint);
+            setTimeout(updateScrollHint, 100);
+            window.addEventListener('resize', updateScrollHint);
+            
+            // 防止滾動穿透
+            panelContent.addEventListener('touchstart', function(e) {
+                if (panelContent.scrollHeight > panelContent.clientHeight) {
+                    e.stopPropagation();
+                }
+            }, { passive: true });
+            
+            panelContent.addEventListener('wheel', function(e) {
+                if (panelContent.scrollHeight > panelContent.clientHeight) {
+                    e.stopPropagation();
+                }
+            }, { passive: false });
+        }
+
+        // ============================================
+        // 控制面板管理
+        // ============================================
+        function toggleControlPanel() {
+            const panelContainer = document.getElementById('control-panel-container');
+            const icon = document.getElementById('panel-icon');
+            const toggle = document.getElementById('panel-toggle');
+            
+            if (panelContainer.classList.contains('hidden')) {
+                panelContainer.classList.remove('hidden');
+                icon.className = 'fas fa-chevron-up';
+                toggle.innerHTML = '<i class="fas fa-chevron-up"></i> 控制面板';
+                GameState.isPanelOpen = true;
+            } else {
+                panelContainer.classList.add('hidden');
+                icon.className = 'fas fa-chevron-down';
+                toggle.innerHTML = '<i class="fas fa-chevron-down"></i> 控制面板';
+                GameState.isPanelOpen = false;
+            }
+            
+            setTimeout(() => {
+                onWindowResize();
+            }, 300);
+        }
+
+        // ============================================
+        // Three.js 初始化
+        // ============================================
+        async function initThreeJS() {
+            return new Promise((resolve) => {
+                setTimeout(async () => {
+                    try {
+                        const canvas = document.getElementById('main-canvas');
+                        
+                        Performance.detectPerformance();
+                        updateProgress(30);
+                        
+                        // 創建場景
+                        GameState.scene = new THREE.Scene();
+                        GameState.scene.background = new THREE.Color(0x87CEEB);
+                        GameState.scene.fog = new THREE.Fog(0x87CEEB, 50, 200);
+                        
+                        updateProgress(50);
+                        
+                        // 創建相機
+                        GameState.camera = new THREE.PerspectiveCamera(
+                            75,
+                            canvas.clientWidth / canvas.clientHeight,
+                            0.1,
+                            1000
+                        );
+                        GameState.camera.position.set(40, 35, 50);
+                        
+                        // 創建渲染器（高性能設置）
+                        GameState.renderer = new THREE.WebGLRenderer({
+                            canvas: canvas,
+                            antialias: !Performance.isLowPerformance && !Performance.isHighPerformanceMode,
+                            alpha: false,
+                            powerPreference: "high-performance",
+                            precision: "mediump"
+                        });
+                        GameState.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+                        GameState.renderer.setPixelRatio(Math.min(window.devicePixelRatio, Performance.isLowPerformance ? 1 : 2));
+                        GameState.renderer.shadowMap.enabled = !Performance.isLowPerformance;
+                        GameState.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                        GameState.renderer.outputEncoding = THREE.sRGBEncoding;
+                        GameState.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                        GameState.renderer.toneMappingExposure = 1.0;
+                        
+                        updateProgress(70);
+                        
+                        // 創建軌道控制器
+                        GameState.controls = new THREE.OrbitControls(GameState.camera, canvas);
+                        GameState.controls.enableDamping = true;
+                        GameState.controls.dampingFactor = 0.05;
+                        GameState.controls.maxPolarAngle = Math.PI / 2;
+                        GameState.controls.minDistance = 5;
+                        GameState.controls.maxDistance = 200;
+                        GameState.controls.enablePan = true;
+                        GameState.controls.enableZoom = true;
+                        
+                        // 創建射線投射器
+                        GameState.raycaster = new THREE.Raycaster();
+                        
+                        updateProgress(80);
+                        
+                        // 添加光照
+                        setupLighting();
+                        
+                        // 創建基礎場景
+                        createBaseScene();
+                        
+                        updateProgress(90);
+                        
+                        // 更新UI
+                        updateEraInfo();
+                        updateDistrictInfo();
+                        
+                        // 開始動畫循環
+                        animate();
+                        
+                        // 設置事件監聽
+                        setupEventListeners();
+                        setupScrollManagement();
+                        setupFavorites();
+                        
+                        updateProgress(100);
+                        
+                        // 隱藏加載畫面
+                        setTimeout(() => {
+                            document.getElementById('loading-screen').style.display = 'none';
+                            
+                            // 顯示觸摸提示
+                            if (Performance.isMobile) {
+                                const touchHint = document.getElementById('touch-hint');
+                                touchHint.style.display = 'block';
+                            }
+                            
+                            // 顯示歡迎訊息
+                            Performance.showNotification('香港昔日懷舊街道模擬系統已載入完成！', 'success');
+                        }, 500);
+                        
+                        GameState.isInitialized = true;
+                        resolve();
+                        
+                    } catch (error) {
+                        console.error('初始化錯誤:', error);
+                        Performance.showNotification('系統初始化失敗，請刷新頁面重試', 'error');
+                        goHome();
+                    }
+                }, 100);
+            });
+        }
+
+        function updateProgress(percent) {
+            const fill = document.getElementById('progress-fill');
+            const text = document.getElementById('progress-text');
+            if (fill) fill.style.width = percent + '%';
+            if (text) text.textContent = percent + '%';
+        }
+
+        function setupEventListeners() {
+            const canvas = document.getElementById('main-canvas');
+            
+            // 窗口調整大小
+            window.addEventListener('resize', onWindowResize, { passive: true });
+            
+            // 鍵盤事件
+            document.addEventListener('keydown', onKeyDown, { passive: true });
+            document.addEventListener('keyup', onKeyUp, { passive: true });
+            
+            // 滑鼠事件
+            canvas.addEventListener('mousedown', onMouseDown, { passive: true });
+            canvas.addEventListener('mousemove', onMouseMove, { passive: true });
+            canvas.addEventListener('mouseup', onMouseUp, { passive: true });
+            canvas.addEventListener('wheel', onMouseWheel, { passive: false });
+            canvas.addEventListener('click', onClick, { passive: true });
+            canvas.addEventListener('mousemove', onMouseHover, { passive: true });
+            
+            // 觸摸事件
+            canvas.addEventListener('touchstart', onTouchStart, { passive: true });
+            canvas.addEventListener('touchmove', onTouchMove, { passive: true });
+            canvas.addEventListener('touchend', onTouchEnd, { passive: true });
+            
+            // 面板切換
+            const panelToggle = document.getElementById('panel-toggle');
+            if (panelToggle) {
+                panelToggle.addEventListener('click', toggleControlPanel);
+            }
+            
+            // 快速開始按鈕
+            const quickStartBtn = document.getElementById('quick-start-btn');
+            if (quickStartBtn) {
+                quickStartBtn.addEventListener('click', startSimulator);
+            }
+            
+            // 移動控制
+            setupMobileControls();
+            
+            // 按鈕防重複點擊
+            setupButtonDebounce();
+            
+            // 收藏面板點擊外部關閉
+            document.addEventListener('click', (e) => {
+                const favoritesPanel = document.getElementById('favorites-panel');
+                const favoriteToggle = document.getElementById('favorite-toggle');
+                
+                if (favoritesPanel && favoritesPanel.classList.contains('show') &&
+                    !favoritesPanel.contains(e.target) && 
+                    !favoriteToggle.contains(e.target)) {
+                    favoritesPanel.classList.remove('show');
+                }
+            });
+        }
+
+        // ============================================
+        // 收藏場景功能
+        // ============================================
+        function setupFavorites() {
+            // 從localStorage載入收藏
+            const savedFavorites = localStorage.getItem('hk_street_favorites');
+            if (savedFavorites) {
+                GameState.favorites = JSON.parse(savedFavorites);
+                updateFavoritesList();
+            }
+            
+            // 保存上次場景
+            const lastScene = localStorage.getItem('hk_street_last_scene');
+            if (lastScene) {
+                GameState.lastScene = JSON.parse(lastScene);
+            }
+        }
+
+        function toggleFavorites() {
+            const favoritesPanel = document.getElementById('favorites-panel');
+            if (favoritesPanel) {
+                favoritesPanel.classList.toggle('show');
+            }
+        }
+
+        function updateFavoritesList() {
+            const favoritesList = document.getElementById('favorites-list');
+            if (!favoritesList) return;
+            
+            favoritesList.innerHTML = '';
+            
+            if (GameState.favorites.length === 0) {
+                favoritesList.innerHTML = `
+                    <div style="color: #888; text-align: center; padding: 20px; font-size: 0.9rem;">
+                        <i class="fas fa-heart-broken"></i><br>
+                        還沒有收藏場景
+                    </div>
+                `;
+                return;
+            }
+            
+            GameState.favorites.forEach((favorite, index) => {
+                const favoriteItem = document.createElement('div');
+                favoriteItem.className = 'favorite-item';
+                favoriteItem.innerHTML = `
+                    <div>
+                        <div style="font-weight: bold; color: var(--color-gold);">${favorite.name}</div>
+                        <div style="font-size: 0.7rem; color: #aaa;">
+                            ${Config.DISTRICTS[favorite.district].name} • ${Config.ERAS[favorite.era].name}
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 5px;">
+                        <i class="fas fa-play" onclick="loadFavorite(${index})" style="cursor: pointer; padding: 5px; border-radius: 3px;" 
+                           onmouseover="this.style.background='rgba(0,153,204,0.2)'" onmouseout="this.style.background='transparent'"></i>
+                        <i class="fas fa-trash remove-btn" onclick="removeFavorite(${index})"></i>
+                    </div>
+                `;
+                favoritesList.appendChild(favoriteItem);
+            });
+        }
+
+        function saveCurrentScene() {
+            const sceneData = {
+                name: `場景_${new Date().toLocaleTimeString('zh-HK', {hour: '2-digit', minute:'2-digit'})}`,
+                district: GameState.currentDistrict,
+                era: GameState.currentEra,
+                time: GameState.currentTime,
+                weather: GameState.currentWeather,
+                viewMode: GameState.viewMode,
+                details: {...GameState.details},
+                streetElements: {...GameState.streetElements},
+                animations: {...GameState.animations},
+                soundEnabled: GameState.soundEnabled,
+                soundTypes: {...GameState.soundTypes},
+                volume: GameState.volume,
+                date: new Date().toISOString()
+            };
+            GameState.favorites.push(sceneData);
+            if (GameState.favorites.length > 5) { GameState.favorites.shift(); }
+            localStorage.setItem('hk_street_favorites', JSON.stringify(GameState.favorites));
+            updateFavoritesList();
+            Performance.showNotification(`場景「${sceneData.name}」已保存到我的最愛`, 'success');
+        }
+
+        function loadFavorite(index) {
+            if (index < 0 || index >= GameState.favorites.length) return;
+            const favorite = GameState.favorites[index];
+            changeDistrict(favorite.district);
+            changeEra(favorite.era);
+            setViewMode(favorite.viewMode || 'orbit');
+            updateTime(favorite.time || 12);
+            updateWeather(favorite.weather || 'sunny');
+            Object.keys(favorite.details || {}).forEach(key => { if (GameState.details.hasOwnProperty(key)) { GameState.details[key] = favorite.details[key]; } });
+            Performance.showNotification('已載入收藏場景', 'success');
+        }
+
+        function removeFavorite(index) {
+            if (index < 0 || index >= GameState.favorites.length) return;
+            
+            GameState.favorites.splice(index, 1);
+            localStorage.setItem('hk_street_favorites', JSON.stringify(GameState.favorites));
+            updateFavoritesList();
+            
+            Performance.showNotification('場景已從我的最愛中移除', 'success');
+        }
+
+        function loadLastScene() {
+            if (!GameState.lastScene) return;
+            
+            loadFavorite(GameState.favorites.length - 1);
+        }
+
+        function updateUIElement(elementId, isActive) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                if (isActive) {
+                    element.classList.add('active');
+                } else {
+                    element.classList.remove('active');
+                }
+            }
+        }
+
+        // ============================================
+        // 快捷場景
+        // ============================================
+        function loadQuickScene(sceneType) {
+            switch(sceneType) {
+                case 'night_80s':
+                    changeDistrict('mong_kok');
+                    changeEra('80s');
+                    setTimePreset('night');
+                    setViewMode('drone');
+                    Performance.showNotification('80年代旺角夜景已載入', 'success');
+                    break;
+                    
+                case 'day_60s':
+                    changeDistrict('shek_kip_mei');
+                    changeEra('60s');
+                    setTimePreset('noon');
+                    setViewMode('orbit');
+                    Performance.showNotification('60年代石硤尾日景已載入', 'success');
+                    break;
+                    
+                case 'rain_90s':
+                    changeDistrict('sham_shui_po');
+                    changeEra('90s');
+                    updateWeather('rainy');
+                    setTimePreset('evening');
+                    setViewMode('fps');
+                    Performance.showNotification('90年代深水埗雨景已載入', 'success');
+                    break;
+            }
+        }
+
+        // ============================================
+        // 移動控制設置
+        // ============================================
+        function setupMobileControls() {
+            if (!Performance.isMobile) return;
+            
+            const joystick = document.getElementById('joystick');
+            const joystickHandle = document.getElementById('joystick-handle');
+            const jumpBtn = document.getElementById('mobile-jump');
+            const interactBtn = document.getElementById('mobile-interact');
+            
+            if (!joystick || !joystickHandle) return;
+            
+            let joystickActive = false;
+            let joystickStartX = 0;
+            let joystickStartY = 0;
+            let handleX = 0;
+            let handleY = 0;
+            
+            joystick.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                joystickActive = true;
+                const rect = joystick.getBoundingClientRect();
+                joystickStartX = rect.left + rect.width / 2;
+                joystickStartY = rect.top + rect.height / 2;
+                updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: false });
+            
+            document.addEventListener('touchmove', (e) => {
+                if (!joystickActive) return;
+                e.preventDefault();
+                updateJoystick(e.touches[0].clientX, e.touches[0].clientY);
+            }, { passive: false });
+            
+            document.addEventListener('touchend', () => {
+                if (!joystickActive) return;
+                joystickActive = false;
+                resetJoystick();
+            }, { passive: true });
+            
+            function updateJoystick(x, y) {
+                const dx = x - joystickStartX;
+                const dy = y - joystickStartY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                const maxDistance = 40;
+                
+                if (distance > maxDistance) {
+                    const angle = Math.atan2(dy, dx);
+                    handleX = Math.cos(angle) * maxDistance;
+                    handleY = Math.sin(angle) * maxDistance;
+                } else {
+                    handleX = dx;
+                    handleY = dy;
+                }
+                
+                joystickHandle.style.transform = `translate(calc(-50% + ${handleX}px), calc(-50% + ${handleY}px))`;
+                
+                const normalizedX = handleX / maxDistance;
+                const normalizedY = -handleY / maxDistance;
+                
+                GameState.input.keys['w'] = normalizedY > 0.3;
+                GameState.input.keys['s'] = normalizedY < -0.3;
+                GameState.input.keys['a'] = normalizedX < -0.3;
+                GameState.input.keys['d'] = normalizedX > 0.3;
+            }
+            
+            function resetJoystick() {
+                handleX = 0;
+                handleY = 0;
+                joystickHandle.style.transform = 'translate(-50%, -50%)';
+                
+                GameState.input.keys['w'] = false;
+                GameState.input.keys['s'] = false;
+                GameState.input.keys['a'] = false;
+                GameState.input.keys['d'] = false;
+            }
+            
+            if (jumpBtn) {
+                jumpBtn.addEventListener('touchstart', () => {
+                    GameState.input.keys[' '] = true;
+                }, { passive: true });
+                
+                jumpBtn.addEventListener('touchend', () => {
+                    GameState.input.keys[' '] = false;
+                }, { passive: true });
+            }
+            
+            if (interactBtn) {
+                interactBtn.addEventListener('touchstart', () => {
+                    simulateClick();
+                }, { passive: true });
+            }
+        }
+
+        function simulateClick() {
+            const event = new MouseEvent('click', {
+                view: window,
+                bubbles: true,
+                cancelable: true
+            });
+            const canvas = document.getElementById('main-canvas');
+            canvas.dispatchEvent(event);
+        }
+
+        function setupButtonDebounce() {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(button => {
+                button.addEventListener('click', function(e) {
+                    if (this.classList.contains('disabled')) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                    
+                    this.classList.add('disabled');
+                    setTimeout(() => {
+                        this.classList.remove('disabled');
+                    }, 500);
+                }, { passive: true });
+            });
+        }
+
+        // ============================================
+        // 基礎場景創建
+        // ============================================
+        
+        function createDistrictFeatures(group, district, era) {
+            if (district === 'shek_kip_mei') {
+                createPublicKitchen(group);
+                createLaundryBamboo(group);
+            } else if (district === 'deep_shui_po') {
+                createStreetStalls(group);
+                createBarberShop(group);
+            } else if (district === 'mong_kok') {
+                createOldCinema(group);
+                createPhoneBooths(group);
+            }
+        }
+
+        function createPublicKitchen(group) {
+            const kitchen = new THREE.Group();
+            const stoveGeo = new THREE.BoxGeometry(1, 0.8, 0.8);
+            const stoveMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
+            const stove = new THREE.Mesh(stoveGeo, stoveMat);
+            stove.position.set(-5, 0.4, -5);
+            stove.userData = { type: 'kitchen', description: '60年代公共廚房，鄰里交流中心' };
+            kitchen.add(stove);
+            group.add(kitchen);
+            GameState.interactiveObjects.push(stove);
+        }
+
+        function createLaundryBamboo(group) {
+            const bambooGeo = new THREE.CylinderGeometry(0.05, 0.05, 3);
+            const bambooMat = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
+            const bamboo = new THREE.Mesh(bambooGeo, bambooMat);
+            bamboo.rotation.z = Math.PI / 2;
+            bamboo.position.set(0, 5, 5);
+            group.add(bamboo);
+        }
+        
+        function createStreetStalls(group) {
+            const stallGeo = new THREE.BoxGeometry(2, 2, 2);
+            const stallMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+            const stall = new THREE.Mesh(stallGeo, stallMat);
+            stall.position.set(5, 1, 5);
+            stall.userData = { type: 'stall', description: '深水埗特色排檔，販賣各種生活雜貨' };
+            group.add(stall);
+            GameState.interactiveObjects.push(stall);
+        }
+        
+        function createBarberShop(group) {
+            const shopGeo = new THREE.BoxGeometry(4, 4, 4);
+            const shopMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+            const shop = new THREE.Mesh(shopGeo, shopMat);
+            shop.position.set(-10, 2, 10);
+            shop.userData = { type: 'barber', description: '舊式理髮廳，旋轉理髮柱是標誌' };
+            group.add(shop);
+            GameState.interactiveObjects.push(shop);
+        }
+
+        function createOldCinema(group) {
+            const cinemaGeo = new THREE.BoxGeometry(10, 15, 10);
+            const cinemaMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            const cinema = new THREE.Mesh(cinemaGeo, cinemaMat);
+            cinema.position.set(-20, 7.5, -20);
+            cinema.userData = { type: 'cinema', description: '80年代旺角戲院，港產片黃金時代見證' };
+            group.add(cinema);
+            GameState.interactiveObjects.push(cinema);
+        }
+        
+        function createPhoneBooths(group) {
+            const boothGeo = new THREE.BoxGeometry(1, 2.5, 1);
+            const boothMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const booth = new THREE.Mesh(boothGeo, boothMat);
+            booth.position.set(8, 1.25, -8);
+            booth.userData = { type: 'phone_booth', description: '紅色公共電話亭，昔日通訊必備' };
+            group.add(booth);
+            GameState.interactiveObjects.push(booth);
+        }
+    
+        function createBaseScene() {
+            clearScene();
+            createGround();
+            createStreetSystem();
+            createBuildingCluster();
+            createStreetElements();
+            
+            if (GameState.streetElements.pedestrians) createPedestrians();
+            if (GameState.streetElements.vehicles) createVehicles();
+            
+            updateObjectCount();
+            updateDistrictInfo();
+            updateEraInfo();
+            
+            // 保存當前場景到localStorage
+            saveCurrentSceneToLocalStorage();
+        }
+
+        function clearScene() {
+            if (GameState.animationFrame) { cancelAnimationFrame(GameState.animationFrame); GameState.animationFrame = null; }
+            while(GameState.scene.children.length > 0){ 
+                const object = GameState.scene.children[0];
+                disposeObject(object);
+                GameState.scene.remove(object); 
+            }
+            GameState.buildings = []; GameState.streetObjects = []; GameState.pedestrians = []; GameState.vehicles = []; GameState.interactiveObjects = [];
+            animate();
+        }
+
+        function createGround() {
+            const groundSize = 250;
+            const groundGeo = new THREE.PlaneGeometry(groundSize, groundSize, 10, 10);
+            const groundMat = MaterialManager.roadMaterial;
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            ground.position.y = -0.1;
+            GameState.scene.add(ground);
+            GameState.streetObjects.push(ground);
+        }
+
+        function createStreetSystem() {
+            const district = Config.DISTRICTS[GameState.currentDistrict];
+            const streetWidth = district.streetWidth || Config.STREET_WIDTH;
+            const streetLength = Config.STREET_LENGTH;
+            
+            // 主車道
+            const roadGeo = new THREE.PlaneGeometry(streetWidth, streetLength);
+            const roadMat = MaterialManager.roadMaterial;
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.receiveShadow = true;
+            road.position.set(0, 0, 0);
+            GameState.scene.add(road);
+            GameState.streetObjects.push(road);
+            
+            // 車道線
+            createRoadMarkings(streetWidth, streetLength);
+            
+            // 行人路
+            createPavements(streetWidth, streetLength);
+            
+            // 斑馬線
+            createCrosswalks(streetWidth);
+        }
+
+        function createRoadMarkings(width, length) {
+            const lineGeo = new THREE.PlaneGeometry(0.2, 3);
+            const lineMat = new THREE.MeshBasicMaterial({
+                color: 0xFFFF00,
+                side: THREE.DoubleSide
+            });
+            
+            const spacing = 6;
+            const count = Math.floor(length / spacing);
+            
+            for (let i = -count/2; i < count/2; i++) {
+                const line = new THREE.Mesh(lineGeo, lineMat);
+                line.rotation.x = -Math.PI / 2;
+                line.position.set(0, 0.02, i * spacing);
+                GameState.scene.add(line);
+                GameState.streetObjects.push(line);
+            }
+        }
+
+        function createPavements(streetWidth, streetLength) {
+            const pavementWidth = 5;
+            const pavementGeo = new THREE.PlaneGeometry(pavementWidth, streetLength, 5, 5);
+            const pavementMat = MaterialManager.pavementMaterial;
+            
+            // 左側行人路
+            const pavementLeft = new THREE.Mesh(pavementGeo, pavementMat);
+            pavementLeft.rotation.x = -Math.PI / 2;
+            pavementLeft.receiveShadow = true;
+            pavementLeft.position.set(-streetWidth/2 - pavementWidth/2, 0.01, 0);
+            GameState.scene.add(pavementLeft);
+            GameState.streetObjects.push(pavementLeft);
+            
+            // 右側行人路
+            const pavementRight = new THREE.Mesh(pavementGeo, pavementMat);
+            pavementRight.rotation.x = -Math.PI / 2;
+            pavementRight.receiveShadow = true;
+            pavementRight.position.set(streetWidth/2 + pavementWidth/2, 0.01, 0);
+            GameState.scene.add(pavementRight);
+            GameState.streetObjects.push(pavementRight);
+        }
+
+        function createCrosswalks(streetWidth) {
+            const positions = [-40, -20, 0, 20, 40];
+            
+            positions.forEach(z => {
+                const stripeGeo = new THREE.PlaneGeometry(1.5, 0.4);
+                const stripeMat = new THREE.MeshBasicMaterial({
+                    color: 0xFFFFFF,
+                    side: THREE.DoubleSide
+                });
+                
+                for (let i = -4; i <= 4; i++) {
+                    const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+                    stripe.rotation.x = -Math.PI / 2;
+                    stripe.position.set(i * 2, 0.02, z);
+                    GameState.scene.add(stripe);
+                    GameState.streetObjects.push(stripe);
+                }
+            });
+        }
+
+        // ============================================
+        // 建築群創建
+        // ============================================
+        function createBuildingCluster() {
+            const district = Config.DISTRICTS[GameState.currentDistrict];
+            const era = Config.ERAS[GameState.currentEra];
+            let buildingCount = district.buildingCount;
+            
+            // 性能調整
+            if (Performance.isLowPerformance && !Performance.isHighPerformanceMode) {
+                buildingCount = Math.max(4, Math.floor(buildingCount * 0.6));
+            }
+            
+            const streetWidth = district.streetWidth || Config.STREET_WIDTH;
+            const buildingWidth = Config.BUILDING_WIDTH;
+            const buildingDepth = Config.BUILDING_DEPTH;
+            const spacing = 3;
+            
+            // 創建左右兩側建築群
+            for (let side = -1; side <= 1; side += 2) {
+                const sideCount = Math.floor(buildingCount / 2);
+                for (let i = 0; i < sideCount; i++) {
+                    const building = createTongLau(era, district, side);
+                    const xPos = side * (streetWidth/2 + 5 + buildingDepth/2);
+                    const zPos = (i - Math.floor(sideCount/2)) * (buildingWidth + spacing);
+                    building.position.set(xPos, 0, zPos);
+                    building.rotation.y = side > 0 ? -Math.PI / 2 : Math.PI / 2;
+                    
+                    // 添加建築物到場景
+                    GameState.scene.add(building);
+                    GameState.buildings.push(building);
+                    
+                    // 設置建築物互動資訊
+                    building.userData = {
+                        type: 'tong_lau',
+                        district: district.name,
+                        era: era.name,
+                        side: side > 0 ? '右側' : '左側',
+                        position: i + 1
+                    };
+                    
+                    // 添加互動提示
+                    building.traverse((child) => {
+                        if (child instanceof THREE.Mesh) {
+                            child.userData.parentBuilding = building;
+                        }
+                    });
+                }
+            }
+            
+            // 創建街角建築
+            createCornerBuildings(era, district);
+        }
+
+        function createTongLau(era, district, side) {
+            const group = new THREE.Group();
+            
+            const width = Config.BUILDING_WIDTH;
+            const depth = Config.BUILDING_DEPTH;
+            const floorHeight = Config.FLOOR_HEIGHT;
+            
+            // 根據區域和年代確定樓層數
+            let floors = 6;
+            if (district.buildingStyle === 'resettlement') floors = 5;
+            else if (district.buildingStyle === 'commercial') floors = 8;
+            if (era.name === '60s') floors = Math.min(floors, 5);
+            
+            // 性能調整
+            if (Performance.isLowPerformance && !Performance.isHighPerformanceMode) {
+                floors = Math.max(3, Math.floor(floors * 0.8));
+            }
+            
+            const totalHeight = floors * floorHeight;
+            
+            // 主建築結構
+            const buildingGeo = new THREE.BoxGeometry(width, totalHeight, depth, 2, floors, 2);
+            const buildingMat = MaterialManager.getBuildingMaterial(era.name);
+            const building = new THREE.Mesh(buildingGeo, buildingMat);
+            building.position.y = totalHeight / 2;
+            building.castShadow = !Performance.isLowPerformance;
+            building.receiveShadow = true;
+            group.add(building);
+            
+            // 地鋪（根據年代）
+            if (GameState.details.shops) {
+                createGroundShop(group, width, depth, floorHeight, era, side);
+            }
+            
+            // 樓層細節
+            for (let floor = 1; floor <= floors; floor++) {
+                const y = floor * floorHeight - floorHeight/2;
+                
+                // 窗戶
+                if (GameState.details.windows) {
+                    createWindows(group, width, depth, y, floor, era, side);
+                }
+                
+                // 陽台（70年代後）
+                if (GameState.details.balconies && floor > 1 && era.name !== '60s') {
+                    if (Math.random() > 0.5) {
+                        createBalcony(group, width, depth, y, era, side);
+                    }
+                }
+                
+                // 冷氣機（80年代後）
+                if (GameState.details.aircon && (era.name === '80s' || era.name === '90s')) {
+                    if (Math.random() > 0.6) {
+                        createAirConditioner(group, width, depth, y, era, side);
+                    }
+                }
+            }
+            
+            // 天台細節
+            if (GameState.details.rooftop) {
+                createRooftop(group, width, depth, totalHeight, era);
+            }
+            
+            // 招牌
+            if (GameState.details.signs) {
+                createBuildingSigns(group, width, depth, totalHeight, era, district);
+            }
+            
+            return group;
+        }
+
+        function createWindows(group, width, depth, y, floor, era, side) {
+            const windowsPerRow = 4;
+            const windowSpacing = width / (windowsPerRow + 1);
+            
+            for (let i = 1; i <= windowsPerRow; i++) {
+                const x = -width/2 + i * windowSpacing;
+                
+                // 前面窗戶
+                createWindow(group, x, y, depth/2, era, floor, side);
+            }
+        }
+
+        function createWindow(group, x, y, z, era, floor, side) {
+            let windowWidth, windowHeight;
+            
+            switch(era.windowType) {
+                case 'small_wood':
+                    windowWidth = 0.8;
+                    windowHeight = 1.2;
+                    break;
+                case 'medium_iron':
+                    windowWidth = 1.0;
+                    windowHeight = 1.4;
+                    break;
+                case 'large_iron':
+                    windowWidth = 1.2;
+                    windowHeight = 1.6;
+                    break;
+                case 'aluminum':
+                    windowWidth = 1.4;
+                    windowHeight = 1.8;
+                    break;
+                default:
+                    windowWidth = 1.0;
+                    windowHeight = 1.4;
+            }
+            
+            // 窗戶玻璃
+            const windowGeo = new THREE.PlaneGeometry(windowWidth, windowHeight);
+            const windowMat = MaterialManager.windowMaterial.clone();
+            windowMat.opacity = 0.4 + Math.random() * 0.3;
+            
+            const window = new THREE.Mesh(windowGeo, windowMat);
+            window.position.set(x, y, z > 0 ? z + 0.05 : z - 0.05);
+            window.rotation.y = z > 0 ? 0 : Math.PI;
+            
+            // 添加互動資訊
+            window.userData = {
+                type: 'window',
+                era: era.name,
+                floor: floor,
+                description: `${era.name}唐樓窗戶設計`
+            };
+            
+            group.add(window);
+            GameState.interactiveObjects.push(window);
+            
+            // 窗框
+            const frameGeo = new THREE.BoxGeometry(windowWidth + 0.1, windowHeight + 0.1, 0.1);
+            let frameMat;
+            
+            if (era.windowType === 'aluminum') {
+                frameMat = MaterialManager.metalMaterial;
+            } else {
+                frameMat = new THREE.MeshStandardMaterial({
+                    color: 0x4a4a4a,
+                    roughness: 0.7,
+                    metalness: 0.5
+                });
+            }
+            
+            const frame = new THREE.Mesh(frameGeo, frameMat);
+            frame.position.set(x, y, z > 0 ? z + 0.02 : z - 0.02);
+            group.add(frame);
+            
+            // 鐵窗花（60-70年代）
+            if ((era.name === '60s' || era.name === '70s') && Math.random() > 0.3) {
+                createWindowGrille(group, x, y, z, windowWidth, windowHeight);
+            }
+            
+            // 防盜網（80-90年代）
+            if ((era.name === '80s' || era.name === '90s') && Math.random() > 0.5) {
+                createSecurityGrille(group, x, y, z, windowWidth, windowHeight);
+            }
+        }
+
+        function createWindowGrille(group, x, y, z, width, height) {
+            const grilleGeo = new THREE.BoxGeometry(width, height, 0.05);
+            const grilleMat = new THREE.MeshStandardMaterial({
+                color: 0x2a2a2a,
+                roughness: 0.8,
+                metalness: 0.6,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const grille = new THREE.Mesh(grilleGeo, grilleMat);
+            grille.position.set(x, y, z > 0 ? z + 0.1 : z - 0.1);
+            
+            // 添加互動資訊
+            grille.userData = {
+                type: 'window_grille',
+                description: '傳統鐵窗花，60-70年代香港唐樓常見防盜設計'
+            };
+            
+            group.add(grille);
+            GameState.interactiveObjects.push(grille);
+        }
+
+        function createSecurityGrille(group, x, y, z, width, height) {
+            const grilleGeo = new THREE.BoxGeometry(width + 0.2, height + 0.2, 0.15);
+            const grilleMat = MaterialManager.metalMaterial.clone();
+            grilleMat.transparent = true;
+            grilleMat.opacity = 0.7;
+            
+            const grille = new THREE.Mesh(grilleGeo, grilleMat);
+            grille.position.set(x, y, z > 0 ? z + 0.15 : z - 0.15);
+            
+            // 添加互動資訊
+            grille.userData = {
+                type: 'security_grille',
+                description: '不鏽鋼防盜網，80-90年代後常見的安全裝置'
+            };
+            
+            group.add(grille);
+            GameState.interactiveObjects.push(grille);
+        }
+
+        function createBuildingSigns(group, width, depth, height, era, district) {
+            const signCount = Math.floor(era.neonDensity * 5) + 1;
+            
+            for (let i = 0; i < signCount; i++) {
+                const signHeight = 1 + Math.random() * 1.5;
+                const signWidth = 0.8 + Math.random() * 1.2;
+                const signDepth = 0.1;
+                
+                let signMat;
+                
+                if (era.signType === 'wood') {
+                    signMat = MaterialManager.woodMaterial;
+                } else if (era.signType === 'simple_neon' || era.signType === 'bright_neon') {
+                    signMat = MaterialManager.getRandomNeonMaterial();
+                } else {
+                    signMat = new THREE.MeshStandardMaterial({
+                        color: 0xffffff,
+                        emissive: 0xffffff,
+                        emissiveIntensity: 0.5,
+                        roughness: 0.4
+                    });
+                }
+                
+                const signGeo = new THREE.BoxGeometry(signWidth, signHeight, signDepth);
+                const sign = new THREE.Mesh(signGeo, signMat);
+                const yPos = height * (0.3 + Math.random() * 0.6);
+                sign.position.set(
+                    -width/2 + Math.random() * width,
+                    yPos,
+                    depth/2 + signDepth
+                );
+                
+                // 添加互動資訊
+                sign.userData = {
+                    type: 'neon_sign',
+                    era: era.name,
+                    description: `${era.name}霓虹招牌，香港街道特色標誌`
+                };
+                
+                group.add(sign);
+                GameState.interactiveObjects.push(sign);
+            }
+        }
+
+        // ============================================
+        // UI控制函數
+        // ============================================
+        function changeEra(era) {
+            GameState.currentEra = era;
+            
+            // 更新UI
+            document.querySelectorAll('.era-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`era-${era}`).classList.add('active');
+            
+            // 重建場景
+            createBaseScene();
+            
+            // 更新資訊
+            updateEraInfo();
+            
+            // 顯示通知
+            Performance.showNotification(`已切換到${Config.ERAS[era].name}場景`, 'success');
+        }
+
+        function changeDistrict(district) {
+            GameState.currentDistrict = district;
+            
+            // 更新UI
+            document.querySelectorAll('.district-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`district-${district}`).classList.add('active');
+            
+            // 重建場景
+            createBaseScene();
+            
+            // 更新資訊
+            updateDistrictInfo();
+            
+            // 顯示通知
+            Performance.showNotification(`已切換到${Config.DISTRICTS[district].name}區域`, 'success');
+        }
+
+        function updateEraInfo() {
+            const era = Config.ERAS[GameState.currentEra];
+            const element = document.getElementById('era-description');
+            if (element) {
+                element.innerHTML = `
+                    <strong style="color: var(--color-gold);">${era.name}</strong><br>
+                    ${era.description}<br>
+                    <small style="color: #aaa; font-size: 0.75rem;">
+                        <i class="fas fa-store"></i> ${era.shopTypes.join('、')}
+                    </small>
+                `;
+            }
+        }
+
+        function updateDistrictInfo() {
+            const district = Config.DISTRICTS[GameState.currentDistrict];
+            const element = document.getElementById('district-description');
+            if (element) {
+                element.innerHTML = `
+                    <strong style="color: var(--color-gold);">${district.name}</strong><br>
+                    ${district.description}<br>
+                    <small style="color: #aaa; font-size: 0.75rem;">
+                        <i class="fas fa-star"></i> ${district.features.join('、')}
+                    </small>
+                `;
+            }
+        }
+
+        // ============================================
+        // 事件處理
+        // ============================================
+        function onKeyDown(event) {
+            const key = event.key.toLowerCase();
+            GameState.input.keys[key] = true;
+            
+            // 空白鍵暫停/繼續
+            if (key === ' ' && !event.repeat) {
+                event.preventDefault();
+                if (GameState.animationFrame) {
+                    cancelAnimationFrame(GameState.animationFrame);
+                    GameState.animationFrame = null;
+                    Performance.showNotification('動畫已暫停', 'warning');
+                } else {
+                    animate();
+                    Performance.showNotification('動畫已繼續', 'success');
+                }
+            }
+            
+            // ESC返回主頁
+            if (key === 'escape') {
+                if (GameState.isInBuilding) {
+                    exitBuilding();
+                } else {
+                    goHome();
+                }
+            }
+            
+            // E鍵互動
+            if (key === 'e' && !event.repeat) {
+                simulateClick();
+            }
+        }
+
+        function onKeyUp(event) {
+            GameState.input.keys[event.key.toLowerCase()] = false;
+        }
+
+        function onMouseHover(event) {
+            if (!GameState.raycaster || !GameState.camera) return;
+            
+            const canvas = document.getElementById('main-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            GameState.raycaster.setFromCamera(new THREE.Vector2(x, y), GameState.camera);
+            
+            const intersects = GameState.raycaster.intersectObjects(GameState.interactiveObjects);
+            
+            const interactionHint = document.getElementById('interaction-hint');
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                const userData = object.userData;
+                
+                if (interactionHint) {
+                    interactionHint.style.display = 'block';
+                    interactionHint.style.left = (event.clientX + 15) + 'px';
+                    interactionHint.style.top = (event.clientY - 15) + 'px';
+                    
+                    if (userData.type === 'window') {
+                        interactionHint.innerHTML = `<i class="fas fa-th"></i> 點擊查看${userData.era}窗戶設計`;
+                    } else if (userData.type === 'neon_sign') {
+                        interactionHint.innerHTML = `<i class="fas fa-lightbulb"></i> 點擊查看霓虹招牌`;
+                    } else if (userData.type === 'window_grille') {
+                        interactionHint.innerHTML = `<i class="fas fa-shield-alt"></i> 點擊查看鐵窗花設計`;
+                    } else if (userData.type === 'security_grille') {
+                        interactionHint.innerHTML = `<i class="fas fa-lock"></i> 點擊查看防盜網`;
+                    } else {
+                        interactionHint.innerHTML = `<i class="fas fa-hand-pointer"></i> 點擊查看詳細資訊`;
+                    }
+                    
+                    // 改變游標樣式
+                    canvas.style.cursor = 'pointer';
+                }
+            } else {
+                if (interactionHint) {
+                    interactionHint.style.display = 'none';
+                }
+                canvas.style.cursor = GameState.input.mouse.down ? 'grabbing' : 'grab';
+            }
+        }
+
+        function onClick(event) {
+            if (!GameState.raycaster || !GameState.camera) return;
+            
+            const canvas = document.getElementById('main-canvas');
+            const rect = canvas.getBoundingClientRect();
+            
+            const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            const y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            GameState.raycaster.setFromCamera(new THREE.Vector2(x, y), GameState.camera);
+            
+            const intersects = GameState.raycaster.intersectObjects(GameState.interactiveObjects);
+            
+            if (intersects.length > 0) {
+                const object = intersects[0].object;
+                showObjectInfo(object);
+                
+                // 播放互動聲效
+                playInteractionSound(object.userData.type);
+            }
+        }
+
+        let infoTimer = null;
+        function showObjectInfo(object) {
+            const panel = document.getElementById('detail-panel');
+            const title = document.getElementById('detail-title');
+            const content = document.getElementById('detail-content');
+            const history = document.getElementById('detail-history');
+            if (!panel || !title || !content || !history) return;
+            if (infoTimer) clearTimeout(infoTimer);
+            const userData = object.userData;
+            panel.style.display = 'block';
+            if (!document.getElementById('close-detail')) {
+                const closeBtn = document.createElement('div');
+                closeBtn.id = 'close-detail';
+                closeBtn.innerHTML = '<i class="fas fa-times"></i>';
+                closeBtn.style.cssText = 'position:absolute;top:10px;right:10px;cursor:pointer;';
+                closeBtn.onclick = () => panel.style.display = 'none';
+                panel.appendChild(closeBtn);
+            }
+            infoTimer = setTimeout(() => { panel.style.display = 'none'; }, 10000);
+        }
+
+        function playInteractionSound(type) {
+            if (!GameState.soundEnabled) return;
+            
+            // 這裡可以添加具體的互動聲效
+            console.log(`播放互動聲效: ${type}`);
+        }
+
+        // ============================================
+        // 動畫循環
+        // ============================================
+        function animate() {
+            GameState.animationFrame = requestAnimationFrame(animate);
+            
+            const deltaTime = Math.min(GameState.clock.getDelta(), 0.1);
+            
+            // 更新FPS
+            Performance.updateFPS();
+            
+            // 優化場景（視錐體剔除）
+            if (Performance.isHighPerformanceMode) {
+                Performance.optimizeScene(GameState.scene, GameState.camera);
+            }
+            
+            // 更新控制器
+            if (GameState.controls && GameState.viewMode === 'orbit') {
+                GameState.controls.update();
+            }
+            
+            // 更新第一人稱視角
+            if (GameState.viewMode === 'fps') {
+                updateFirstPersonMovement(deltaTime);
+            }
+            
+            // 更新無人機視角
+            if (GameState.viewMode === 'drone') {
+                updateDroneMovement(deltaTime);
+            }
+            
+            
+            // 更新動態元素
+            if (GameState.animations.pedestrian) updatePedestrians(deltaTime);
+            if (GameState.animations.vehicle) updateVehicles(deltaTime);
+            if (GameState.animations.neon) updateNeonSigns();
+            
+            // 更新天氣粒子
+            const weatherEffect = GameState.scene.getObjectByName('weather-effect');
+            if (weatherEffect && GameState.currentWeather === 'rainy') {
+                const positions = weatherEffect.geometry.attributes.position.array;
+                for (let i = 1; i < positions.length; i += 3) {
+                    positions[i] -= 0.5;
+                    if (positions[i] < 0) positions[i] = 100;
+                }
+                weatherEffect.geometry.attributes.position.needsUpdate = true;
+            }
+    
+            
+            // 渲染場景
+            if (GameState.renderer && GameState.scene && GameState.camera) {
+                GameState.renderer.render(GameState.scene, GameState.camera);
+            }
+        }
+
+        // ============================================
+        // 其他功能函數
+        // ============================================
+        function updateMoveSpeed(value) {
+            GameState.moveSpeed = parseFloat(value);
+            document.getElementById('move-speed-value').textContent = value;
+        }
+
+        function updateZoomSensitivity(value) {
+            GameState.zoomSensitivity = parseFloat(value);
+            document.getElementById('zoom-sensitivity-value').textContent = value;
+        }
+
+        function resetView() {
+            if (GameState.camera) {
+                GameState.camera.position.set(40, 35, 50);
+                GameState.camera.rotation.set(0, 0, 0);
+                GameState.camera.zoom = 1;
+                GameState.camera.updateProjectionMatrix();
+                
+                if (GameState.controls) {
+                    GameState.controls.target.set(0, 10, 0);
+                    GameState.controls.update();
+                }
+                
+                document.getElementById('zoom-value').textContent = '100%';
+                Performance.showNotification('視角已重置', 'success');
+            }
+        }
+
+        function toggleFloor(floor) {
+            GameState.floorVisibility[floor] = !GameState.floorVisibility[floor];
+            const btn = document.getElementById(`floor-${floor}`);
+            if (btn) {
+                btn.classList.toggle('active', GameState.floorVisibility[floor]);
+            }
+            GameState.buildings.forEach(building => {
+                building.traverse(child => {
+                    if (child.userData && child.userData.floorType === floor) {
+                        child.visible = GameState.floorVisibility[floor];
+                    }
+                });
+            });
+            Performance.showNotification(`${floor === 'ground' ? '地鋪' : floor === 'residential' ? '住宅層' : '天台'}已${GameState.floorVisibility[floor] ? '顯示' : '隱藏'}`, 'success');
+        }
+
+        function showAllFloors() {
+            Object.keys(GameState.floorVisibility).forEach(floor => {
+                GameState.floorVisibility[floor] = true;
+                const btn = document.getElementById(`floor-${floor}`);
+                if (btn) btn.classList.add('active');
+            });
+            Performance.showNotification('所有樓層已顯示', 'success');
+        }
+
+        function hideAllFloors() {
+            Object.keys(GameState.floorVisibility).forEach(floor => {
+                GameState.floorVisibility[floor] = false;
+                const btn = document.getElementById(`floor-${floor}`);
+                if (btn) btn.classList.remove('active');
+            });
+            Performance.showNotification('所有樓層已隱藏', 'success');
+        }
+
+        function setExperienceMode(mode) {
+            GameState.experienceMode = mode;
+            
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`mode-${mode}`).classList.add('active');
+            
+            const messages = {
+                'free': '自由探索模式：自由移動與互動',
+                'compare': '年代對比模式：快速切換觀察變化',
+                'guided': '導覽模式：跟隨導覽路線',
+                'interaction': '互動模式：增強互動體驗'
+            };
+            
+            if (messages[mode]) {
+                Performance.showNotification(messages[mode], 'success');
+            }
+        }
+
+        function updateTime(value) {
+            GameState.time = parseFloat(value);
+            GameState.currentTime = value;
+            const hours = Math.floor(GameState.time);
+            const minutes = Math.floor((GameState.time - hours) * 60);
+            const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+            
+            document.getElementById('time-value').textContent = timeStr;
+            document.getElementById('time-display').textContent = timeStr;
+            
+            // 更新光照
+            updateLighting();
+        }
+
+        function setTimePreset(preset) {
+            const times = {
+                'morning': 8,
+                'noon': 12,
+                'evening': 18,
+                'night': 21
+            };
+            
+            if (times[preset]) {
+                updateTime(times[preset]);
+                Performance.showNotification(`時間設置為${preset}`, 'success');
+            }
+        }
+
+        function updateWeather(value) {
+            const weatherTypes = ['sunny', 'cloudy', 'overcast', 'rainy'];
+            const weatherNames = ['晴天', '多雲', '陰天', '雨天'];
+            const weather = weatherTypes[parseInt(value)];
+            const weatherName = weatherNames[parseInt(value)];
+            GameState.currentWeather = weather;
+            document.getElementById('weather-value').textContent = weatherName;
+            const oldWeather = GameState.scene.getObjectByName('weather-effect');
+            if (oldWeather) GameState.scene.remove(oldWeather);
+            if (weather === 'overcast' || weather === 'rainy') {
+                GameState.scene.fog.color.setHex(0x666666);
+                GameState.scene.background.setHex(0x666666);
+                if (GameState.ambientLight) GameState.ambientLight.intensity = 0.3;
+            } else {
+                GameState.scene.fog.color.setHex(0x87CEEB);
+                GameState.scene.background.setHex(0x87CEEB);
+                if (GameState.ambientLight) GameState.ambientLight.intensity = 0.6;
+            }
+            if (weather === 'rainy') {
+                const rainGeo = new THREE.BufferGeometry();
+                const rainCount = 5000;
+                const positions = new Float32Array(rainCount * 3);
+                for(let i=0; i<rainCount*3; i+=3) {
+                    positions[i] = Math.random() * 200 - 100;
+                    positions[i+1] = Math.random() * 100;
+                    positions[i+2] = Math.random() * 200 - 100;
+                }
+                rainGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                const rainMat = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.1, transparent: true });
+                const rain = new THREE.Points(rainGeo, rainMat);
+                rain.name = 'weather-effect';
+                GameState.scene.add(rain);
+            }
+            Performance.showNotification(`天氣設置為${weatherName}`, 'success');
+        }
+
+        function updateLighting() {
+            if (!GameState.sunLight) return;
+            const angle = (GameState.time / 24) * Math.PI * 2 - Math.PI / 2;
+            const distance = 100;
+            GameState.sunLight.position.set(Math.cos(angle) * distance, Math.sin(angle) * distance, 20);
+            const isNight = GameState.time < 6 || GameState.time > 18;
+            GameState.sunLight.intensity = isNight ? 0.1 : 1.0;
+            GameState.animations.neon = isNight;
+            GameState.scene.traverse(child => {
+                if (child.userData && (child.userData.type === 'neon_sign' || child.userData.type === 'street_lamp')) {
+                    child.visible = isNight;
+                }
+            });
+        }
+
+        function toggleDetail(detail) {
+            GameState.details[detail] = !GameState.details[detail];
+            const btn = document.getElementById(`detail-${detail}`);
+            if (btn) {
+                btn.classList.toggle('active');
+            }
+            createBaseScene();
+            
+            const detailNames = {
+                'windows': '窗戶',
+                'balconies': '陽台',
+                'aircon': '冷氣機',
+                'signs': '招牌',
+                'rooftop': '天台',
+                'shops': '地鋪',
+                'interior': '室內',
+                'furniture': '傢具',
+                'pipes': '水管'
+            };
+            
+            if (detailNames[detail]) {
+                const status = GameState.details[detail] ? '開啟' : '關閉';
+                Performance.showNotification(`建築細節：${detailNames[detail]}已${status}`, 'success');
+            }
+        }
+
+        function toggleStreetElement(element) {
+            GameState.streetElements[element] = !GameState.streetElements[element];
+            const btn = document.getElementById(`element-${element}`);
+            if (btn) {
+                btn.classList.toggle('active');
+            }
+            createBaseScene();
+            
+            const elementNames = {
+                'pedestrians': '行人',
+                'vehicles': '車輛',
+                'stalls': '攤檔',
+                'lampposts': '街燈',
+                'trees': '樹木',
+                'phonebooth': '電話亭',
+                'benches': '長椅',
+                'bikes': '單車',
+                'trash': '垃圾桶'
+            };
+            
+            if (elementNames[element]) {
+                const status = GameState.streetElements[element] ? '開啟' : '關閉';
+                Performance.showNotification(`街道元素：${elementNames[element]}已${status}`, 'success');
+            }
+        }
+
+        function toggleAnimation(type) {
+            GameState.animations[type] = !GameState.animations[type];
+            const btn = document.getElementById(`anim-${type}`);
+            if (btn) {
+                btn.classList.toggle('active', GameState.animations[type]);
+            }
+            Performance.showNotification(`${type === 'pedestrian' ? '行人' : type === 'vehicle' ? '車輛' : '霓虹'}動畫已${GameState.animations[type] ? '開啟' : '關閉'}`, 'success');
+        }
+
+        function updateAnimationSpeed(value) {
+            GameState.animationSpeed = parseFloat(value);
+            document.getElementById('animation-speed-value').textContent = `${value}x`;
+        }
+
+        function toggleSound() {
+            GameState.soundEnabled = !GameState.soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            const toggle = document.getElementById('sound-toggle');
+            
+            if (GameState.soundEnabled) {
+                icon.className = 'fas fa-volume-up';
+                toggle.classList.remove('muted');
+                Performance.showNotification('音效已開啟', 'success');
+            } else {
+                icon.className = 'fas fa-volume-mute';
+                toggle.classList.add('muted');
+                Performance.showNotification('音效已關閉', 'warning');
+            }
+        }
+
+        function toggleSoundType(type) {
+            GameState.soundTypes[type] = !GameState.soundTypes[type];
+            const btn = document.getElementById(`sound-${type}`);
+            if (btn) {
+                btn.classList.toggle('active');
+            }
+            
+            const soundNames = {
+                'ambient': '環境音',
+                'traffic': '車聲',
+                'people': '人聲',
+                'vendor': '叫賣聲',
+                'shop': '店鋪聲',
+                'weather': '天氣聲'
+            };
+            
+            if (soundNames[type]) {
+                const status = GameState.soundTypes[type] ? '開啟' : '關閉';
+                Performance.showNotification(`音效設置：${soundNames[type]}已${status}`, 'success');
+            }
+        }
+
+        function updateVolume(value) {
+            GameState.volume = parseInt(value) / 100;
+            document.getElementById('volume-value').textContent = `${value}%`;
+        }
+
+        function togglePerformanceMode() {
+            Performance.isHighPerformanceMode = !Performance.isHighPerformanceMode;
+            const btn = document.getElementById('perf-mode-btn');
+            if (btn) { btn.innerHTML = Performance.isHighPerformanceMode ? '<i class="fas fa-bolt"></i> 高性能模式' : '<i class="fas fa-leaf"></i> 省電模式'; }
+            if (GameState.renderer) {
+                GameState.renderer.shadowMap.enabled = Performance.isHighPerformanceMode;
+                GameState.renderer.setPixelRatio(Performance.isHighPerformanceMode ? window.devicePixelRatio : 1);
+            }
+            createBaseScene();
+            Performance.showNotification(`已切換至${Performance.isHighPerformanceMode ? '高性能' : '省電'}模式`, 'info');
+        }
+
+        function takeScreenshot() {
+            if (GameState.renderer) {
+                const canvas = GameState.renderer.domElement;
+                const link = document.createElement('a');
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const district = Config.DISTRICTS[GameState.currentDistrict].name;
+                const era = Config.ERAS[GameState.currentEra].name;
+                
+                link.download = `香港懷舊街道_${district}_${era}_${timestamp}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+                
+                Performance.showNotification('截圖已保存！', 'success');
+            }
+        }
+
+        function randomTour() {
+            const districts = Object.keys(Config.DISTRICTS);
+            const eras = Object.keys(Config.ERAS);
+            
+            const randomDistrict = districts[Math.floor(Math.random() * districts.length)];
+            const randomEra = eras[Math.floor(Math.random() * eras.length)];
+            
+            GameState.currentDistrict = randomDistrict;
+            GameState.currentEra = randomEra;
+            
+            // 更新UI
+            document.querySelectorAll('.district-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`district-${randomDistrict}`).classList.add('active');
+            
+            document.querySelectorAll('.era-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.getElementById(`era-${randomEra}`).classList.add('active');
+            
+            // 隨機時間
+            const randomTime = Math.floor(Math.random() * 24);
+            updateTime(randomTime);
+            
+            // 隨機視角
+            const viewModes = ['orbit', 'fps', 'drone'];
+            const randomView = viewModes[Math.floor(Math.random() * viewModes.length)];
+            setViewMode(randomView);
+            
+            // 重建場景
+            createBaseScene();
+            
+            // 更新資訊
+            updateEraInfo();
+            updateDistrictInfo();
+            
+            Performance.showNotification('隨機遊覽場景已載入', 'success');
+        }
+
+        function focusBuilding() {
+            if (GameState.buildings.length > 0 && GameState.camera) {
+                const building = GameState.buildings[Math.floor(Math.random() * GameState.buildings.length)];
+                GameState.camera.position.set(
+                    building.position.x + 25,
+                    20,
+                    building.position.z + 25
+                );
+                if (GameState.controls) {
+                    GameState.controls.target.set(
+                        building.position.x,
+                        12,
+                        building.position.z
+                    );
+                }
+                Performance.showNotification('已聚焦隨機建築物', 'success');
+            }
+        }
+
+        function enterBuilding(building) {
+            if (!building) return;
+            GameState.isInBuilding = true;
+            GameState.currentBuilding = building;
+            GameState.lastCameraPosition = GameState.camera.position.clone();
+            GameState.lastCameraTarget = GameState.controls.target.clone();
+            const pos = building.position.clone();
+            GameState.camera.position.set(pos.x, 2, pos.z);
+            GameState.controls.target.set(pos.x + 1, 2, pos.z);
+            GameState.controls.update();
+            Performance.showNotification('已進入建築內部', 'success');
+        }
+
+        function exitBuilding() {
+            if (!GameState.isInBuilding) return;
+            GameState.isInBuilding = false;
+            if (GameState.lastCameraPosition) {
+                GameState.camera.position.copy(GameState.lastCameraPosition);
+                GameState.controls.target.copy(GameState.lastCameraTarget);
+                GameState.controls.update();
+            }
+            GameState.currentBuilding = null;
+            Performance.showNotification('已退出建築', 'success');
+        }
+
+        function showControlsHelp() {
+            Performance.showNotification(`
+                <div style="text-align: left; line-height: 1.6;">
+                    <strong>控制幫助：</strong><br>
+                    • 滑鼠拖曳：旋轉視角<br>
+                    • 滾輪：縮放視角<br>
+                    • WASD：移動（第一人稱）<br>
+                    • ESC：返回/退出<br>
+                    • 空格：暫停/繼續<br>
+                    • 點擊物件：查看詳細資訊
+                </div>
+            `, 'info');
+        }
+
+        // ============================================
+        // 視角控制
+        // ============================================
+        
+        function stopAllMovement() {
+            GameState.autoCruise = false;
+            Object.keys(GameState.input.keys).forEach(key => {
+                GameState.input.keys[key] = false;
+            });
+            if (GameState.viewMode === 'drone') {
+                Performance.showNotification('自動巡航已停止', 'info');
+            }
+        }
+    
+        function setViewMode(mode) {
+            GameState.viewMode = mode;
+            // 切換模式時預設關閉自動巡航，除非是無人機模式
+            GameState.autoCruise = (mode === 'drone');
+            
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            const btn = document.getElementById(`view-${mode}`);
+            if (btn) btn.classList.add('active');
+            
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = mode === 'fps' ? 'block' : 'none';
+            
+            if (GameState.controls) {
+                GameState.controls.enabled = (mode === 'orbit');
+            }
+
+            if (mode === 'orbit') {
+                document.getElementById('view-mode-text').textContent = '軌道視角';
+                Performance.showNotification('軌道視角：滑鼠拖曳旋轉，滾輪縮放', 'success');
+            } else if (mode === 'fps') {
+                document.getElementById('view-mode-text').textContent = '第一人稱';
+                Performance.showNotification('第一人稱視角：WASD移動，滑鼠環視', 'success');
+            } else if (mode === 'drone') {
+                document.getElementById('view-mode-text').textContent = '無人機俯瞰';
+                Performance.showNotification('無人機視角：自動巡航中，按WASD可手動控制', 'success');
+            }
+        }
+
+        function updateFirstPersonMovement(deltaTime) {
+            const speed = GameState.moveSpeed * 5 * deltaTime;
+            const direction = new THREE.Vector3();
+            GameState.camera.getWorldDirection(direction);
+            direction.y = 0;
+            direction.normalize();
+            const sideDirection = new THREE.Vector3();
+            sideDirection.crossVectors(direction, GameState.camera.up).normalize();
+            const nextPos = GameState.camera.position.clone();
+            if (GameState.input.keys['w']) nextPos.addScaledVector(direction, speed);
+            if (GameState.input.keys['s']) nextPos.addScaledVector(direction, -speed);
+            if (GameState.input.keys['a']) nextPos.addScaledVector(sideDirection, -speed);
+            if (GameState.input.keys['d']) nextPos.addScaledVector(sideDirection, speed);
+            let collision = false;
+            GameState.buildings.forEach(b => { if (nextPos.distanceTo(b.position) < 5) collision = true; });
+            if (!collision) { GameState.camera.position.copy(nextPos); }
+        }
+
+        function updateDroneMovement(deltaTime) {
+            // 只有在無人機模式且未手動控制時才自動巡航
+            const isManual = GameState.input.keys['w'] || GameState.input.keys['s'] || GameState.input.keys['a'] || GameState.input.keys['d'];
+            
+            if (isManual) {
+                const speed = GameState.moveSpeed * 15 * deltaTime;
+                const direction = new THREE.Vector3();
+                GameState.camera.getWorldDirection(direction);
+                
+                if (GameState.input.keys['w']) GameState.camera.position.addScaledVector(direction, speed);
+                if (GameState.input.keys['s']) GameState.camera.position.addScaledVector(direction, -speed);
+                
+                const sideDirection = new THREE.Vector3();
+                sideDirection.crossVectors(direction, GameState.camera.up).normalize();
+                if (GameState.input.keys['a']) GameState.camera.position.addScaledVector(sideDirection, -speed);
+                if (GameState.input.keys['d']) GameState.camera.position.addScaledVector(sideDirection, speed);
+            } else if (GameState.autoCruise) {
+                const time = Date.now() * 0.0003;
+                GameState.camera.position.x = Math.sin(time) * 80;
+                GameState.camera.position.z = Math.cos(time) * 80;
+                GameState.camera.position.y = 50;
+                GameState.camera.lookAt(0, 10, 0);
+            }
+        }
+
+        // ============================================
+        // 工具函數
+        // ============================================
+        function onWindowResize() {
+            const canvas = document.getElementById('main-canvas');
+            if (!GameState.camera || !GameState.renderer) return;
+            
+            GameState.camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            GameState.camera.updateProjectionMatrix();
+            GameState.renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+        }
+
+        function toggleFullscreen() {
+            const container = document.getElementById('game-container');
+            
+            if (!GameState.isFullscreen) {
+                if (container.requestFullscreen) {
+                    container.requestFullscreen();
+                } else if (container.webkitRequestFullscreen) {
+                    container.webkitRequestFullscreen();
+                } else if (container.mozRequestFullScreen) {
+                    container.mozRequestFullScreen();
+                } else if (container.msRequestFullscreen) {
+                    container.msRequestFullscreen();
+                }
+                Performance.showNotification('已進入全屏模式', 'success');
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                } else if (document.webkitExitFullscreen) {
+                    document.webkitExitFullscreen();
+                } else if (document.mozCancelFullScreen) {
+                    document.mozCancelFullScreen();
+                } else if (document.msExitFullscreen) {
+                    document.msExitFullscreen();
+                }
+                Performance.showNotification('已退出全屏模式', 'success');
+            }
+            
+            GameState.isFullscreen = !GameState.isFullscreen;
+        }
+
+        function disposeObject(obj) {
+            if (obj.geometry) obj.geometry.dispose();
+            if (obj.material) {
+                if (Array.isArray(obj.material)) { obj.material.forEach(m => m.dispose()); }
+                else { obj.material.dispose(); }
+            }
+            if (obj.children) { obj.children.forEach(child => disposeObject(child)); }
+        }
+
+        function updateObjectCount() {
+            const buildingCount = GameState.buildings.length;
+            const objectCount = GameState.streetObjects.length;
+            const pedestrianCount = GameState.pedestrians.length;
+            const vehicleCount = GameState.vehicles.length;
+            const interactiveCount = GameState.interactiveObjects.length;
+            
+            const totalCount = buildingCount + objectCount + pedestrianCount + vehicleCount;
+            
+            document.getElementById('object-count').textContent = 
+                `物件: ${totalCount} (建築:${buildingCount} 街道:${objectCount} 行人:${pedestrianCount} 車輛:${vehicleCount})`;
+        }
+
+        function saveCurrentSceneToLocalStorage() {
+            const sceneData = {
+                district: GameState.currentDistrict,
+                era: GameState.currentEra,
+                time: GameState.currentTime,
+                weather: GameState.currentWeather,
+                viewMode: GameState.viewMode,
+                timestamp: new Date().toISOString()
+            };
+            
+            localStorage.setItem('hk_street_last_scene', JSON.stringify(sceneData));
+            GameState.lastScene = sceneData;
+        }
+
+        // ============================================
+        // 初始化和事件監聽
+        // ============================================
+        window.addEventListener('DOMContentLoaded', () => {
+            // 隱藏加載畫面
+            setTimeout(() => {
+                if (document.getElementById('loading-screen').style.display !== 'none') {
+                    document.getElementById('loading-screen').style.display = 'none';
+                }
+            }, 2000);
+            
+            // 移動設備適配
+            if (Performance.isMobile) {
+                document.getElementById('mobile-controls').style.display = 'flex';
+            }
+            
+            // 初始化收藏
+            setupFavorites();
+        });
+
+        // 全屏狀態監聽
+        document.addEventListener('fullscreenchange', updateFullscreenState);
+        document.addEventListener('webkitfullscreenchange', updateFullscreenState);
+        document.addEventListener('mozfullscreenchange', updateFullscreenState);
+        document.addEventListener('msfullscreenchange', updateFullscreenState);
+
+        function updateFullscreenState() {
+            GameState.isFullscreen = !!(document.fullscreenElement || 
+                                        document.webkitFullscreenElement || 
+                                        document.mozFullScreenElement || 
+                                        document.msFullscreenElement);
+        }
+
+        // 防止右鍵菜單
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.id === 'main-canvas') {
+                e.preventDefault();
+            }
+        });
+
+        // 錯誤處理
+        window.addEventListener('error', (e) => {
+            console.error('系統錯誤:', e.error);
+            Performance.showNotification('發生錯誤，部分功能可能受影響', 'error');
+        });
+
+        // ============================================
+        // 簡化的場景元素創建（保持核心功能）
+        // ============================================
+        function setupLighting() {
+            // 環境光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            GameState.scene.add(ambientLight);
+            
+            // 主光源（太陽）
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            sunLight.position.set(50, 80, 30);
+            sunLight.castShadow = !Performance.isLowPerformance;
+            
+            if (!Performance.isLowPerformance) {
+                sunLight.shadow.camera.left = -80;
+                sunLight.shadow.camera.right = 80;
+                sunLight.shadow.camera.top = 80;
+                sunLight.shadow.camera.bottom = -80;
+                sunLight.shadow.camera.near = 0.5;
+                sunLight.shadow.camera.far = 300;
+                sunLight.shadow.mapSize.width = 2048;
+                sunLight.shadow.mapSize.height = 2048;
+            }
+            
+            GameState.scene.add(sunLight);
+            
+            // 補光
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(-50, 40, -30);
+            GameState.scene.add(fillLight);
+        }
+
+        // 其他簡化函數（保持結構完整性）
+        function createGroundShop(group, width, depth, floorHeight, era, side) {
+            // 簡化實現
+        }
+
+        function createBalcony(group, width, depth, y, era, side) {
+            // 簡化實現
+        }
+
+        function createAirConditioner(group, width, depth, y, era, side) {
+            // 簡化實現
+        }
+
+        function createRooftop(group, width, depth, totalHeight, era) {
+            // 簡化實現
+        }
+
+        function createCornerBuildings(era, district) {
+            // 簡化實現
+        }
+
+        function createStreetElements() {
+            // 簡化實現
+        }
+
+        function createPedestrians() {
+            // 簡化實現
+        }
+
+        function createVehicles() {
+            // 簡化實現
+        }
+
+        function updatePedestrians(deltaTime) {
+            // 簡化實現
+        }
+
+        function updateVehicles(deltaTime) {
+            // 簡化實現
+        }
+
+        function updateNeonSigns() {
+            // 簡化實現
+        }
+
+        // ============================================
+        // 簡化的觸摸事件處理
+        // ============================================
+        function onMouseDown(event) {
+            GameState.input.mouse.down = true;
+            GameState.input.mouse.x = event.clientX;
+            GameState.input.mouse.y = event.clientY;
+            
+            const canvas = document.getElementById('main-canvas');
+            canvas.style.cursor = 'grabbing';
+        }
+
+        function onMouseMove(event) {
+            if (GameState.input.mouse.down && GameState.viewMode === 'fps') {
+                const movementX = event.clientX - GameState.input.mouse.x;
+                const movementY = event.clientY - GameState.input.mouse.y;
+                
+                if (GameState.camera) {
+                    GameState.camera.rotation.y -= movementX * 0.002 * GameState.zoomSensitivity;
+                    GameState.camera.rotation.x -= movementY * 0.002 * GameState.zoomSensitivity;
+                    
+                    GameState.camera.rotation.x = Math.max(
+                        -Math.PI / 2,
+                        Math.min(Math.PI / 2, GameState.camera.rotation.x)
+                    );
+                }
+            }
+            
+            GameState.input.mouse.x = event.clientX;
+            GameState.input.mouse.y = event.clientY;
+        }
+
+        function onMouseUp() {
+            GameState.input.mouse.down = false;
+            const canvas = document.getElementById('main-canvas');
+            canvas.style.cursor = 'grab';
+        }
+
+        function onMouseWheel(event) {
+            event.preventDefault();
+            
+            if (GameState.viewMode !== 'orbit') return;
+            
+            const zoomDelta = event.deltaY > 0 ? 0.9 : 1.1;
+            const currentZoom = GameState.camera ? GameState.camera.zoom : 1;
+            const newZoom = currentZoom * zoomDelta;
+            
+            const minZoom = 0.1;
+            const maxZoom = 5;
+            const clampedZoom = Math.max(minZoom, Math.min(maxZoom, newZoom));
+            
+            if (GameState.camera) {
+                GameState.camera.zoom = clampedZoom;
+                GameState.camera.updateProjectionMatrix();
+                
+                const zoomPercent = Math.round(clampedZoom * 100);
+                document.getElementById('zoom-value').textContent = `${zoomPercent}%`;
+            }
+        }
+
+        function onTouchStart(event) {
+            event.preventDefault();
+            
+            if (event.touches.length === 1) {
+                GameState.input.touch.startX = event.touches[0].clientX;
+                GameState.input.touch.startY = event.touches[0].clientY;
+                GameState.input.touch.isMoving = true;
+            } else if (event.touches.length === 2) {
+                GameState.input.touch.isMoving = false;
+            }
+        }
+
+        function onTouchMove(event) {
+            event.preventDefault();
+            
+            if (event.touches.length === 1 && GameState.input.touch.isMoving) {
+                const touch = event.touches[0];
+                const movementX = touch.clientX - GameState.input.touch.startX;
+                const movementY = touch.clientY - GameState.input.touch.startY;
+                
+                if (GameState.viewMode === 'fps' && GameState.camera) {
+                    GameState.camera.rotation.y -= movementX * 0.005 * GameState.zoomSensitivity;
+                    GameState.camera.rotation.x -= movementY * 0.005 * GameState.zoomSensitivity;
+                    
+                    GameState.camera.rotation.x = Math.max(
+                        -Math.PI / 2,
+                        Math.min(Math.PI / 2, GameState.camera.rotation.x)
+                    );
+                } else if (GameState.viewMode === 'orbit' && GameState.controls) {
+                    GameState.controls.rotateLeft(-movementX * 0.01);
+                    GameState.controls.rotateUp(-movementY * 0.01);
+                }
+                
+                GameState.input.touch.startX = touch.clientX;
+                GameState.input.touch.startY = touch.clientY;
+            }
+        }
+
+        function onTouchEnd(event) {
+            event.preventDefault();
+            GameState.input.touch.isMoving = false;
+        }
+    </script>
+</body>
+</html>
