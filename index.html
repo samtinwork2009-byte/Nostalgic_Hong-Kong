@@ -985,6 +985,37 @@
             background: rgba(255,255,255,0.2);
         }
 
+        /* 自動巡航狀態標識 */
+        .view-btn.auto-cruise {
+            border-color: var(--color-gold);
+            box-shadow: 0 0 10px var(--color-gold);
+            animation: pulse-gold 2s infinite;
+        }
+
+        @keyframes pulse-gold {
+            0% { box-shadow: 0 0 5px var(--color-gold); }
+            50% { box-shadow: 0 0 15px var(--color-gold); }
+            100% { box-shadow: 0 0 5px var(--color-gold); }
+        }
+
+        /* 停止移動提示 */
+        .stop-hint {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: var(--color-gold);
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            z-index: 1000;
+            display: none;
+            backdrop-filter: blur(10px);
+            border: 2px solid var(--color-gold);
+        }
+
         /* 響應式設計 */
         @media (min-width: 769px) {
             .simulator-main {
@@ -1257,6 +1288,9 @@
         </button>
     </div>
 
+    <!-- 停止移動提示 -->
+    <div id="stop-hint" class="stop-hint">已停止自動移動</div>
+
     <!-- 遊戲容器 -->
     <div id="game-container">
         <!-- 主頁面 -->
@@ -1441,6 +1475,19 @@
                         <div id="detail-history" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem; color: #ccc; line-height: 1.4;">
                             <!-- 歷史背景資訊會動態添加 -->
                         </div>
+                        <button onclick="closeDetailPanel()" style="
+                            background: rgba(255,255,255,0.1);
+                            color: white;
+                            border: 1px solid rgba(255,255,255,0.3);
+                            padding: 5px 10px;
+                            border-radius: 4px;
+                            margin-top: 10px;
+                            cursor: pointer;
+                            font-size: 0.8rem;
+                            width: 100%;
+                        ">
+                            <i class="fas fa-times"></i> 關閉
+                        </button>
                     </div>
                     
                     <!-- 第一人稱十字準星 -->
@@ -1654,10 +1701,10 @@
                                     <button class="control-btn active" onclick="toggleDetail('shops')" id="detail-shops">
                                         <i class="fas fa-store-alt"></i><br>地鋪
                                     </button>
-                                    <button class="control-btn active" onclick="toggleDetail('interior')" id="detail-interior">
+                                    <button class="control-btn" onclick="toggleDetail('interior')" id="detail-interior">
                                         <i class="fas fa-couch"></i><br>室內
                                     </button>
-                                    <button class="control-btn active" onclick="toggleDetail('furniture')" id="detail-furniture">
+                                    <button class="control-btn" onclick="toggleDetail('furniture')" id="detail-furniture">
                                         <i class="fas fa-chair"></i><br>傢具
                                     </button>
                                     <button class="control-btn active" onclick="toggleDetail('pipes')" id="detail-pipes">
@@ -1980,15 +2027,44 @@
                         Config.PERFORMANCE.shadowQuality = 'high';
                         Config.PERFORMANCE.renderDistance = 200;
                     }
+                    
+                    // 實際調整渲染參數
+                    if (GameState.renderer) {
+                        GameState.renderer.shadowMap.enabled = true;
+                        GameState.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                        GameState.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                        GameState.renderer.antialias = true;
+                    }
+                    
                     this.showNotification('已啟用高性能模式，享受更佳畫質', 'success');
                 } else {
                     this.applyPerformanceMode();
+                    
+                    // 實際調整渲染參數
+                    if (GameState.renderer) {
+                        GameState.renderer.shadowMap.enabled = false;
+                        GameState.renderer.setPixelRatio(1);
+                        GameState.renderer.antialias = false;
+                    }
                 }
                 
                 // 更新UI
                 const performanceModeElement = document.getElementById('performance-mode');
                 if (performanceModeElement) {
                     performanceModeElement.textContent = this.isHighPerformanceMode ? '高性能模式' : '平衡模式';
+                }
+                
+                // 更新按鈕
+                const perfBtn = document.getElementById('performance-btn');
+                if (perfBtn) {
+                    perfBtn.innerHTML = this.isHighPerformanceMode ? 
+                        '<i class="fas fa-bolt"></i>' : 
+                        '<i class="fas fa-leaf"></i>';
+                }
+                
+                // 重建場景以應用新設置
+                if (GameState.isInitialized) {
+                    createBaseScene();
                 }
                 
                 return this.isHighPerformanceMode;
@@ -2305,13 +2381,22 @@
             
             // 其他
             isFullscreen: false,
-            isPanelOpen: true, autoCruise: false,
+            isPanelOpen: true,
+            autoCruise: false,
             isInitialized: false,
             isInBuilding: false,
             currentBuilding: null,
+            selectedObject: null,
             favorites: [],
             lastScene: null,
-            interactionHint: null
+            interactionHint: null,
+            
+            // 相機位置記錄
+            lastCameraPosition: null,
+            lastCameraTarget: null,
+            
+            // 性能監控
+            performanceWarningShown: false
         };
 
         // ============================================
@@ -2839,6 +2924,7 @@
                 volume: GameState.volume,
                 date: new Date().toISOString()
             };
+            
             GameState.favorites.push(sceneData);
             if (GameState.favorites.length > 5) { GameState.favorites.shift(); }
             localStorage.setItem('hk_street_favorites', JSON.stringify(GameState.favorites));
@@ -2854,8 +2940,39 @@
             setViewMode(favorite.viewMode || 'orbit');
             updateTime(favorite.time || 12);
             updateWeather(favorite.weather || 'sunny');
-            Object.keys(favorite.details || {}).forEach(key => { if (GameState.details.hasOwnProperty(key)) { GameState.details[key] = favorite.details[key]; } });
+            
+            // 恢復詳細設置
+            Object.keys(favorite.details || {}).forEach(key => { 
+                if (GameState.details.hasOwnProperty(key)) { 
+                    GameState.details[key] = favorite.details[key];
+                    updateUIElement(`detail-${key}`, favorite.details[key]);
+                } 
+            });
+            
+            Object.keys(favorite.streetElements || {}).forEach(key => { 
+                if (GameState.streetElements.hasOwnProperty(key)) { 
+                    GameState.streetElements[key] = favorite.streetElements[key];
+                    updateUIElement(`element-${key}`, favorite.streetElements[key]);
+                } 
+            });
+            
+            Object.keys(favorite.animations || {}).forEach(key => { 
+                if (GameState.animations.hasOwnProperty(key)) { 
+                    GameState.animations[key] = favorite.animations[key];
+                    updateUIElement(`anim-${key}`, favorite.animations[key]);
+                } 
+            });
+            
+            GameState.soundEnabled = favorite.soundEnabled !== undefined ? favorite.soundEnabled : true;
+            GameState.volume = favorite.volume !== undefined ? favorite.volume : 0.7;
+            
+            document.getElementById('volume-slider').value = GameState.volume * 100;
+            document.getElementById('volume-value').textContent = `${Math.round(GameState.volume * 100)}%`;
+            
             Performance.showNotification('已載入收藏場景', 'success');
+            
+            // 重建場景
+            createBaseScene();
         }
 
         function removeFavorite(index) {
@@ -2871,7 +2988,15 @@
         function loadLastScene() {
             if (!GameState.lastScene) return;
             
-            loadFavorite(GameState.favorites.length - 1);
+            // 載入上次場景的完整設置
+            const lastScene = GameState.lastScene;
+            if (lastScene.district) changeDistrict(lastScene.district);
+            if (lastScene.era) changeEra(lastScene.era);
+            if (lastScene.time) updateTime(lastScene.time);
+            if (lastScene.weather) updateWeather(lastScene.weather);
+            if (lastScene.viewMode) setViewMode(lastScene.viewMode);
+            
+            Performance.showNotification('已載入上次場景', 'success');
         }
 
         function updateUIElement(elementId, isActive) {
@@ -2977,6 +3102,7 @@
                 const normalizedX = handleX / maxDistance;
                 const normalizedY = -handleY / maxDistance;
                 
+                // 修正：正確綁定前後移動邏輯
                 GameState.input.keys['w'] = normalizedY > 0.3;
                 GameState.input.keys['s'] = normalizedY < -0.3;
                 GameState.input.keys['a'] = normalizedX < -0.3;
@@ -3043,80 +3169,6 @@
         // 基礎場景創建
         // ============================================
         
-        function createDistrictFeatures(group, district, era) {
-            if (district === 'shek_kip_mei') {
-                createPublicKitchen(group);
-                createLaundryBamboo(group);
-            } else if (district === 'deep_shui_po') {
-                createStreetStalls(group);
-                createBarberShop(group);
-            } else if (district === 'mong_kok') {
-                createOldCinema(group);
-                createPhoneBooths(group);
-            }
-        }
-
-        function createPublicKitchen(group) {
-            const kitchen = new THREE.Group();
-            const stoveGeo = new THREE.BoxGeometry(1, 0.8, 0.8);
-            const stoveMat = new THREE.MeshStandardMaterial({ color: 0x555555 });
-            const stove = new THREE.Mesh(stoveGeo, stoveMat);
-            stove.position.set(-5, 0.4, -5);
-            stove.userData = { type: 'kitchen', description: '60年代公共廚房，鄰里交流中心' };
-            kitchen.add(stove);
-            group.add(kitchen);
-            GameState.interactiveObjects.push(stove);
-        }
-
-        function createLaundryBamboo(group) {
-            const bambooGeo = new THREE.CylinderGeometry(0.05, 0.05, 3);
-            const bambooMat = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
-            const bamboo = new THREE.Mesh(bambooGeo, bambooMat);
-            bamboo.rotation.z = Math.PI / 2;
-            bamboo.position.set(0, 5, 5);
-            group.add(bamboo);
-        }
-        
-        function createStreetStalls(group) {
-            const stallGeo = new THREE.BoxGeometry(2, 2, 2);
-            const stallMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
-            const stall = new THREE.Mesh(stallGeo, stallMat);
-            stall.position.set(5, 1, 5);
-            stall.userData = { type: 'stall', description: '深水埗特色排檔，販賣各種生活雜貨' };
-            group.add(stall);
-            GameState.interactiveObjects.push(stall);
-        }
-        
-        function createBarberShop(group) {
-            const shopGeo = new THREE.BoxGeometry(4, 4, 4);
-            const shopMat = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-            const shop = new THREE.Mesh(shopGeo, shopMat);
-            shop.position.set(-10, 2, 10);
-            shop.userData = { type: 'barber', description: '舊式理髮廳，旋轉理髮柱是標誌' };
-            group.add(shop);
-            GameState.interactiveObjects.push(shop);
-        }
-
-        function createOldCinema(group) {
-            const cinemaGeo = new THREE.BoxGeometry(10, 15, 10);
-            const cinemaMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-            const cinema = new THREE.Mesh(cinemaGeo, cinemaMat);
-            cinema.position.set(-20, 7.5, -20);
-            cinema.userData = { type: 'cinema', description: '80年代旺角戲院，港產片黃金時代見證' };
-            group.add(cinema);
-            GameState.interactiveObjects.push(cinema);
-        }
-        
-        function createPhoneBooths(group) {
-            const boothGeo = new THREE.BoxGeometry(1, 2.5, 1);
-            const boothMat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-            const booth = new THREE.Mesh(boothGeo, boothMat);
-            booth.position.set(8, 1.25, -8);
-            booth.userData = { type: 'phone_booth', description: '紅色公共電話亭，昔日通訊必備' };
-            group.add(booth);
-            GameState.interactiveObjects.push(booth);
-        }
-    
         function createBaseScene() {
             clearScene();
             createGround();
@@ -3136,13 +3188,23 @@
         }
 
         function clearScene() {
-            if (GameState.animationFrame) { cancelAnimationFrame(GameState.animationFrame); GameState.animationFrame = null; }
+            if (GameState.animationFrame) { 
+                cancelAnimationFrame(GameState.animationFrame); 
+                GameState.animationFrame = null; 
+            }
+            
             while(GameState.scene.children.length > 0){ 
                 const object = GameState.scene.children[0];
                 disposeObject(object);
                 GameState.scene.remove(object); 
             }
-            GameState.buildings = []; GameState.streetObjects = []; GameState.pedestrians = []; GameState.vehicles = []; GameState.interactiveObjects = [];
+            
+            GameState.buildings = []; 
+            GameState.streetObjects = []; 
+            GameState.pedestrians = []; 
+            GameState.vehicles = []; 
+            GameState.interactiveObjects = [];
+            
             animate();
         }
 
@@ -3282,7 +3344,8 @@
                         district: district.name,
                         era: era.name,
                         side: side > 0 ? '右側' : '左側',
-                        position: i + 1
+                        position: i + 1,
+                        floorType: 'building'
                     };
                     
                     // 添加互動提示
@@ -3325,6 +3388,7 @@
             building.position.y = totalHeight / 2;
             building.castShadow = !Performance.isLowPerformance;
             building.receiveShadow = true;
+            building.userData.floorType = 'building';
             group.add(building);
             
             // 地鋪（根據年代）
@@ -3354,6 +3418,11 @@
                         createAirConditioner(group, width, depth, y, era, side);
                     }
                 }
+                
+                // 室內細節（如果開啟）
+                if (GameState.details.interior && floor > 1) {
+                    createInteriorDetails(group, width, depth, y, floor, era, side);
+                }
             }
             
             // 天台細節
@@ -3364,6 +3433,11 @@
             // 招牌
             if (GameState.details.signs) {
                 createBuildingSigns(group, width, depth, totalHeight, era, district);
+            }
+            
+            // 水管
+            if (GameState.details.pipes) {
+                createPipes(group, width, depth, totalHeight, era);
             }
             
             return group;
@@ -3378,6 +3452,11 @@
                 
                 // 前面窗戶
                 createWindow(group, x, y, depth/2, era, floor, side);
+                
+                // 後面窗戶（如果可見）
+                if (Math.random() > 0.7) {
+                    createWindow(group, x, y, -depth/2, era, floor, side * -1);
+                }
             }
         }
 
@@ -3414,13 +3493,16 @@
             const window = new THREE.Mesh(windowGeo, windowMat);
             window.position.set(x, y, z > 0 ? z + 0.05 : z - 0.05);
             window.rotation.y = z > 0 ? 0 : Math.PI;
+            window.userData.floorType = floor === 1 ? 'ground' : 'residential';
             
             // 添加互動資訊
             window.userData = {
                 type: 'window',
                 era: era.name,
                 floor: floor,
-                description: `${era.name}唐樓窗戶設計`
+                floorType: floor === 1 ? 'ground' : 'residential',
+                description: `${era.name}唐樓窗戶設計`,
+                history: `香港${era.name}唐樓窗戶多為${era.windowType === 'small_wood' ? '木製小窗' : era.windowType === 'aluminum' ? '鋁窗' : '鐵窗'}，反映當時建築材料與設計風格。`
             };
             
             group.add(window);
@@ -3442,20 +3524,21 @@
             
             const frame = new THREE.Mesh(frameGeo, frameMat);
             frame.position.set(x, y, z > 0 ? z + 0.02 : z - 0.02);
+            frame.userData.floorType = floor === 1 ? 'ground' : 'residential';
             group.add(frame);
             
             // 鐵窗花（60-70年代）
             if ((era.name === '60s' || era.name === '70s') && Math.random() > 0.3) {
-                createWindowGrille(group, x, y, z, windowWidth, windowHeight);
+                createWindowGrille(group, x, y, z, windowWidth, windowHeight, floor);
             }
             
             // 防盜網（80-90年代）
             if ((era.name === '80s' || era.name === '90s') && Math.random() > 0.5) {
-                createSecurityGrille(group, x, y, z, windowWidth, windowHeight);
+                createSecurityGrille(group, x, y, z, windowWidth, windowHeight, floor);
             }
         }
 
-        function createWindowGrille(group, x, y, z, width, height) {
+        function createWindowGrille(group, x, y, z, width, height, floor) {
             const grilleGeo = new THREE.BoxGeometry(width, height, 0.05);
             const grilleMat = new THREE.MeshStandardMaterial({
                 color: 0x2a2a2a,
@@ -3467,18 +3550,20 @@
             
             const grille = new THREE.Mesh(grilleGeo, grilleMat);
             grille.position.set(x, y, z > 0 ? z + 0.1 : z - 0.1);
+            grille.userData.floorType = floor === 1 ? 'ground' : 'residential';
             
             // 添加互動資訊
             grille.userData = {
                 type: 'window_grille',
-                description: '傳統鐵窗花，60-70年代香港唐樓常見防盜設計'
+                description: '傳統鐵窗花，60-70年代香港唐樓常見防盜設計',
+                history: '鐵窗花是60-70年代香港唐樓的特色防盜裝置，既實用又具裝飾性，常見於舊式住宅。'
             };
             
             group.add(grille);
             GameState.interactiveObjects.push(grille);
         }
 
-        function createSecurityGrille(group, x, y, z, width, height) {
+        function createSecurityGrille(group, x, y, z, width, height, floor) {
             const grilleGeo = new THREE.BoxGeometry(width + 0.2, height + 0.2, 0.15);
             const grilleMat = MaterialManager.metalMaterial.clone();
             grilleMat.transparent = true;
@@ -3486,15 +3571,82 @@
             
             const grille = new THREE.Mesh(grilleGeo, grilleMat);
             grille.position.set(x, y, z > 0 ? z + 0.15 : z - 0.15);
+            grille.userData.floorType = floor === 1 ? 'ground' : 'residential';
             
             // 添加互動資訊
             grille.userData = {
                 type: 'security_grille',
-                description: '不鏽鋼防盜網，80-90年代後常見的安全裝置'
+                description: '不鏽鋼防盜網，80-90年代後常見的安全裝置',
+                history: '80-90年代後，不鏽鋼防盜網逐漸取代鐵窗花，提供更強的安全防護，成為現代住宅標配。'
             };
             
             group.add(grille);
             GameState.interactiveObjects.push(grille);
+        }
+
+        function createInteriorDetails(group, width, depth, y, floor, era, side) {
+            // 室內牆壁
+            const wallGeo = new THREE.BoxGeometry(width * 0.9, floorHeight * 0.9, depth * 0.9);
+            const wallMat = new THREE.MeshStandardMaterial({
+                color: 0xf5f5f5,
+                roughness: 0.9,
+                metalness: 0.1
+            });
+            
+            const interior = new THREE.Mesh(wallGeo, wallMat);
+            interior.position.set(0, y, 0);
+            interior.userData.floorType = 'residential';
+            interior.userData = {
+                type: 'interior',
+                description: `${era.name}室內空間`,
+                history: `${era.name}香港唐樓室內設計簡樸，空間有限，反映當時居住條件。`
+            };
+            
+            if (GameState.details.furniture) {
+                // 添加簡單傢具
+                createFurniture(group, width, depth, y, floor, era);
+            }
+            
+            group.add(interior);
+            GameState.interactiveObjects.push(interior);
+        }
+
+        function createFurniture(group, width, depth, y, floor, era) {
+            // 床
+            const bedGeo = new THREE.BoxGeometry(1.8, 0.4, 1.0);
+            const bedMat = new THREE.MeshStandardMaterial({
+                color: 0x8B4513,
+                roughness: 0.8
+            });
+            const bed = new THREE.Mesh(bedGeo, bedMat);
+            bed.position.set(-width/4, y - Config.FLOOR_HEIGHT/2 + 0.2, 0);
+            bed.userData.floorType = 'residential';
+            bed.userData = {
+                type: 'furniture',
+                name: '床',
+                description: `${era.name}木製床`,
+                history: `${era.name}香港家庭常用木製床，設計簡單實用。`
+            };
+            group.add(bed);
+            GameState.interactiveObjects.push(bed);
+            
+            // 桌子
+            const tableGeo = new THREE.BoxGeometry(1.2, 0.8, 0.6);
+            const tableMat = new THREE.MeshStandardMaterial({
+                color: 0xD2B48C,
+                roughness: 0.7
+            });
+            const table = new THREE.Mesh(tableGeo, tableMat);
+            table.position.set(width/4, y - Config.FLOOR_HEIGHT/2 + 0.4, 0);
+            table.userData.floorType = 'residential';
+            table.userData = {
+                type: 'furniture',
+                name: '桌子',
+                description: `${era.name}木製桌子`,
+                history: `${era.name}家庭常用多功能木桌，用作餐桌、書桌等。`
+            };
+            group.add(table);
+            GameState.interactiveObjects.push(table);
         }
 
         function createBuildingSigns(group, width, depth, height, era, district) {
@@ -3528,17 +3680,756 @@
                     yPos,
                     depth/2 + signDepth
                 );
+                sign.userData.floorType = 'building';
                 
                 // 添加互動資訊
                 sign.userData = {
                     type: 'neon_sign',
                     era: era.name,
-                    description: `${era.name}霓虹招牌，香港街道特色標誌`
+                    description: `${era.name}霓虹招牌，香港街道特色標誌`,
+                    history: `香港${era.name}霓虹招牌是城市標誌，${era.signType === 'wood' ? '木製招牌' : '霓虹招牌'}反映商業發展與設計風格演變。`
                 };
                 
                 group.add(sign);
                 GameState.interactiveObjects.push(sign);
             }
+        }
+
+        function createGroundShop(group, width, depth, floorHeight, era, side) {
+            // 店鋪門口
+            const doorWidth = 2.5;
+            const doorHeight = 2.2;
+            const doorGeo = new THREE.PlaneGeometry(doorWidth, doorHeight);
+            const doorMat = new THREE.MeshStandardMaterial({
+                color: 0x8B4513,
+                roughness: 0.7
+            });
+            
+            const door = new THREE.Mesh(doorGeo, doorMat);
+            door.position.set(0, doorHeight/2, depth/2 + 0.05);
+            door.rotation.y = Math.PI;
+            door.userData.floorType = 'ground';
+            door.userData = {
+                type: 'shop_door',
+                description: `${era.name}店鋪大門`,
+                history: `${era.name}香港地鋪常用木製或鐵閘大門，夜晚關門後形成獨特街景。`
+            };
+            
+            group.add(door);
+            GameState.interactiveObjects.push(door);
+            
+            // 店鋪招牌
+            const shopSignGeo = new THREE.BoxGeometry(3, 0.5, 0.1);
+            const shopSignMat = MaterialManager.getRandomNeonMaterial();
+            const shopSign = new THREE.Mesh(shopSignGeo, shopSignMat);
+            shopSign.position.set(0, doorHeight + 0.5, depth/2 + 0.1);
+            shopSign.userData.floorType = 'ground';
+            
+            group.add(shopSign);
+            GameState.interactiveObjects.push(shopSign);
+        }
+
+        function createBalcony(group, width, depth, y, era, side) {
+            const balconyWidth = 1.2;
+            const balconyDepth = 0.8;
+            const balconyGeo = new THREE.BoxGeometry(balconyWidth, 0.1, balconyDepth);
+            const balconyMat = new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                roughness: 0.8
+            });
+            
+            const balcony = new THREE.Mesh(balconyGeo, balconyMat);
+            balcony.position.set(
+                side > 0 ? -width/4 : width/4,
+                y - Config.FLOOR_HEIGHT/2,
+                depth/2 + balconyDepth/2
+            );
+            balcony.userData.floorType = 'residential';
+            balcony.userData = {
+                type: 'balcony',
+                description: `${era.name}唐樓陽台`,
+                history: `${era.name}後期唐樓開始設有小陽台，增加居住空間與採光。`
+            };
+            
+            group.add(balcony);
+            GameState.interactiveObjects.push(balcony);
+        }
+
+        function createAirConditioner(group, width, depth, y, era, side) {
+            const acGeo = new THREE.BoxGeometry(0.6, 0.3, 0.4);
+            const acMat = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                roughness: 0.5
+            });
+            
+            const ac = new THREE.Mesh(acGeo, acMat);
+            ac.position.set(
+                side > 0 ? -width/3 : width/3,
+                y - Config.FLOOR_HEIGHT/2 + 0.15,
+                depth/2 + 0.2
+            );
+            ac.userData.floorType = 'residential';
+            ac.userData = {
+                type: 'air_conditioner',
+                description: `${era.name}窗式冷氣機`,
+                history: `${era.name}開始普及窗式冷氣機，改善香港炎熱氣候下的居住環境。`
+            };
+            
+            group.add(ac);
+            GameState.interactiveObjects.push(ac);
+        }
+
+        function createRooftop(group, width, depth, totalHeight, era) {
+            // 天台圍欄
+            const railingGeo = new THREE.BoxGeometry(width + 0.2, 0.8, 0.1);
+            const railingMat = new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                roughness: 0.7
+            });
+            
+            // 前後圍欄
+            const railingFront = new THREE.Mesh(railingGeo, railingMat);
+            railingFront.position.set(0, totalHeight + 0.4, depth/2);
+            railingFront.userData.floorType = 'rooftop';
+            group.add(railingFront);
+            
+            const railingBack = new THREE.Mesh(railingGeo, railingMat);
+            railingBack.position.set(0, totalHeight + 0.4, -depth/2);
+            railingBack.userData.floorType = 'rooftop';
+            group.add(railingBack);
+            
+            // 左右圍欄
+            const railingSideGeo = new THREE.BoxGeometry(0.1, 0.8, depth + 0.2);
+            const railingLeft = new THREE.Mesh(railingSideGeo, railingMat);
+            railingLeft.position.set(-width/2, totalHeight + 0.4, 0);
+            railingLeft.userData.floorType = 'rooftop';
+            group.add(railingLeft);
+            
+            const railingRight = new THREE.Mesh(railingSideGeo, railingMat);
+            railingRight.position.set(width/2, totalHeight + 0.4, 0);
+            railingRight.userData.floorType = 'rooftop';
+            group.add(railingRight);
+            
+            // 天台水箱
+            const waterTankGeo = new THREE.CylinderGeometry(0.8, 0.8, 1.5, 8);
+            const waterTankMat = new THREE.MeshStandardMaterial({
+                color: 0x87CEEB,
+                roughness: 0.6
+            });
+            
+            const waterTank = new THREE.Mesh(waterTankGeo, waterTankMat);
+            waterTank.position.set(width/3, totalHeight + 0.75, -depth/3);
+            waterTank.userData.floorType = 'rooftop';
+            waterTank.userData = {
+                type: 'water_tank',
+                description: '天台水箱',
+                history: '舊式唐樓天台常見水箱，用於儲水供應整棟樓宇使用。'
+            };
+            
+            group.add(waterTank);
+            GameState.interactiveObjects.push(waterTank);
+        }
+
+        function createPipes(group, width, depth, totalHeight, era) {
+            // 排水管
+            const pipeGeo = new THREE.CylinderGeometry(0.1, 0.1, totalHeight, 8);
+            const pipeMat = new THREE.MeshStandardMaterial({
+                color: 0x666666,
+                roughness: 0.8
+            });
+            
+            const pipe = new THREE.Mesh(pipeGeo, pipeMat);
+            pipe.position.set(width/2 - 0.5, totalHeight/2, depth/2 - 0.5);
+            pipe.userData.floorType = 'building';
+            pipe.userData = {
+                type: 'pipe',
+                description: '建築排水管',
+                history: '外牆排水管是唐樓常見設施，用於排放雨水和廢水。'
+            };
+            
+            group.add(pipe);
+            GameState.interactiveObjects.push(pipe);
+        }
+
+        function createCornerBuildings(era, district) {
+            // 創建街角特色建築
+            const cornerBuilding = createTongLau(era, district, 1);
+            cornerBuilding.position.set(60, 0, 60);
+            cornerBuilding.scale.set(1.2, 1.2, 1.2);
+            cornerBuilding.userData.isCorner = true;
+            
+            GameState.scene.add(cornerBuilding);
+            GameState.buildings.push(cornerBuilding);
+        }
+
+        function createStreetElements() {
+            const district = Config.DISTRICTS[GameState.currentDistrict];
+            
+            // 街燈
+            if (GameState.streetElements.lampposts) {
+                createLampposts(district);
+            }
+            
+            // 電話亭
+            if (GameState.streetElements.phonebooth) {
+                createPhoneBooths(district);
+            }
+            
+            // 長椅
+            if (GameState.streetElements.benches) {
+                createBenches(district);
+            }
+            
+            // 單車
+            if (GameState.streetElements.bikes) {
+                createBikes(district);
+            }
+            
+            // 垃圾桶
+            if (GameState.streetElements.trash) {
+                createTrashBins(district);
+            }
+            
+            // 樹木
+            if (GameState.streetElements.trees) {
+                createTrees(district);
+            }
+            
+            // 攤檔
+            if (GameState.streetElements.stalls) {
+                createStalls(district);
+            }
+            
+            // 區域特色設施
+            createDistrictFeatures(district);
+        }
+
+        function createLampposts(district) {
+            const count = district.density === 'extreme' ? 8 : district.density === 'very_high' ? 6 : 4;
+            
+            for (let i = 0; i < count; i++) {
+                const lampGroup = new THREE.Group();
+                
+                // 燈柱
+                const poleGeo = new THREE.CylinderGeometry(0.1, 0.15, 6, 8);
+                const poleMat = new THREE.MeshStandardMaterial({
+                    color: 0x333333,
+                    roughness: 0.7
+                });
+                const pole = new THREE.Mesh(poleGeo, poleMat);
+                pole.position.y = 3;
+                lampGroup.add(pole);
+                
+                // 燈罩
+                const shadeGeo = new THREE.ConeGeometry(0.5, 0.8, 8);
+                const shadeMat = new THREE.MeshStandardMaterial({
+                    color: 0xffffcc,
+                    emissive: 0xffff00,
+                    emissiveIntensity: 0.3,
+                    roughness: 0.5
+                });
+                const shade = new THREE.Mesh(shadeGeo, shadeMat);
+                shade.position.y = 6;
+                shade.rotation.x = Math.PI;
+                lampGroup.add(shade);
+                
+                const x = (Math.random() - 0.5) * 80;
+                const z = (Math.random() - 0.5) * 80;
+                lampGroup.position.set(x, 0, z);
+                lampGroup.userData = {
+                    type: 'lamppost',
+                    description: '街道照明燈柱',
+                    history: '香港街道照明系統隨年代改善，從煤氣燈到電燈，保障夜間安全。'
+                };
+                
+                GameState.scene.add(lampGroup);
+                GameState.streetObjects.push(lampGroup);
+                GameState.interactiveObjects.push(lampGroup);
+            }
+        }
+
+        function createPhoneBooths(district) {
+            if (district.name === '旺角' || district.name === '深水埗') {
+                const boothGroup = new THREE.Group();
+                
+                // 電話亭主體
+                const boothGeo = new THREE.BoxGeometry(1, 2.5, 1);
+                const boothMat = new THREE.MeshStandardMaterial({
+                    color: 0xff0000,
+                    roughness: 0.6
+                });
+                const booth = new THREE.Mesh(boothGeo, boothMat);
+                boothGroup.add(booth);
+                
+                // 電話機
+                const phoneGeo = new THREE.BoxGeometry(0.4, 0.2, 0.3);
+                const phoneMat = new THREE.MeshStandardMaterial({
+                    color: 0x333333,
+                    roughness: 0.5
+                });
+                const phone = new THREE.Mesh(phoneGeo, phoneMat);
+                phone.position.set(0, 1, 0.45);
+                boothGroup.add(phone);
+                
+                boothGroup.position.set(15, 1.25, 15);
+                boothGroup.userData = {
+                    type: 'phone_booth',
+                    description: '紅色公共電話亭',
+                    history: '80-90年代香港街頭常見紅色公共電話亭，使用1元硬幣撥號，是當時主要通訊工具之一。'
+                };
+                
+                GameState.scene.add(boothGroup);
+                GameState.streetObjects.push(boothGroup);
+                GameState.interactiveObjects.push(boothGroup);
+            }
+        }
+
+        function createBenches(district) {
+            const benchCount = district.density === 'high' ? 3 : 2;
+            
+            for (let i = 0; i < benchCount; i++) {
+                const benchGroup = new THREE.Group();
+                
+                // 凳面
+                const seatGeo = new THREE.BoxGeometry(1.5, 0.1, 0.4);
+                const seatMat = new THREE.MeshStandardMaterial({
+                    color: 0x8B4513,
+                    roughness: 0.8
+                });
+                const seat = new THREE.Mesh(seatGeo, seatMat);
+                seat.position.y = 0.5;
+                benchGroup.add(seat);
+                
+                // 凳腳
+                const legGeo = new THREE.BoxGeometry(0.1, 0.5, 0.1);
+                for (let j = 0; j < 4; j++) {
+                    const leg = new THREE.Mesh(legGeo, seatMat);
+                    const x = j < 2 ? -0.7 : 0.7;
+                    const z = j % 2 === 0 ? -0.15 : 0.15;
+                    leg.position.set(x, 0.25, z);
+                    benchGroup.add(leg);
+                }
+                
+                const x = 20 + (i * 15);
+                const z = 10 + (Math.random() - 0.5) * 20;
+                benchGroup.position.set(x, 0, z);
+                benchGroup.rotation.y = Math.PI / 2;
+                benchGroup.userData = {
+                    type: 'bench',
+                    description: '街道長椅',
+                    history: '街道長椅提供市民休息空間，是公共設施的重要組成部分。'
+                };
+                
+                GameState.scene.add(benchGroup);
+                GameState.streetObjects.push(benchGroup);
+                GameState.interactiveObjects.push(benchGroup);
+            }
+        }
+
+        function createBikes(district) {
+            if (district.name === '深水埗' || district.name === '石硤尾') {
+                const bikeGroup = new THREE.Group();
+                
+                // 車架
+                const frameGeo = new THREE.BoxGeometry(1.2, 0.05, 0.6);
+                const frameMat = new THREE.MeshStandardMaterial({
+                    color: 0x333333,
+                    roughness: 0.6
+                });
+                const frame = new THREE.Mesh(frameGeo, frameMat);
+                bikeGroup.add(frame);
+                
+                // 車輪
+                const wheelGeo = new THREE.CylinderGeometry(0.3, 0.3, 0.05, 16);
+                const wheelMat = new THREE.MeshStandardMaterial({
+                    color: 0x222222,
+                    roughness: 0.8
+                });
+                
+                const frontWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                frontWheel.position.set(0.6, 0.3, 0);
+                frontWheel.rotation.z = Math.PI / 2;
+                bikeGroup.add(frontWheel);
+                
+                const backWheel = new THREE.Mesh(wheelGeo, wheelMat);
+                backWheel.position.set(-0.6, 0.3, 0);
+                backWheel.rotation.z = Math.PI / 2;
+                bikeGroup.add(backWheel);
+                
+                bikeGroup.position.set(-15, 0.3, 20);
+                bikeGroup.userData = {
+                    type: 'bicycle',
+                    description: '舊式自行車',
+                    history: '60-70年代自行車是香港常見交通工具，尤其在新界和舊區。'
+                };
+                
+                GameState.scene.add(bikeGroup);
+                GameState.streetObjects.push(bikeGroup);
+                GameState.interactiveObjects.push(bikeGroup);
+            }
+        }
+
+        function createTrashBins(district) {
+            const binCount = district.density === 'extreme' ? 4 : 2;
+            
+            for (let i = 0; i < binCount; i++) {
+                const binGroup = new THREE.Group();
+                
+                // 垃圾桶主體
+                const binGeo = new THREE.CylinderGeometry(0.3, 0.4, 0.8, 8);
+                const binMat = new THREE.MeshStandardMaterial({
+                    color: 0x666666,
+                    roughness: 0.7
+                });
+                const bin = new THREE.Mesh(binGeo, binMat);
+                binGroup.add(bin);
+                
+                // 蓋子
+                const lidGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.05, 8);
+                const lid = new THREE.Mesh(lidGeo, binMat);
+                lid.position.y = 0.425;
+                binGroup.add(lid);
+                
+                const x = -20 + (i * 10);
+                const z = -15 + (Math.random() - 0.5) * 10;
+                binGroup.position.set(x, 0.4, z);
+                binGroup.userData = {
+                    type: 'trash_bin',
+                    description: '街道垃圾桶',
+                    history: '公共垃圾桶隨城市發展不斷改進，從簡單鐵桶到分類回收桶。'
+                };
+                
+                GameState.scene.add(binGroup);
+                GameState.streetObjects.push(binGroup);
+                GameState.interactiveObjects.push(binGroup);
+            }
+        }
+
+        function createTrees(district) {
+            const treeCount = district.density === 'high' ? 6 : 4;
+            
+            for (let i = 0; i < treeCount; i++) {
+                const treeGroup = new THREE.Group();
+                
+                // 樹幹
+                const trunkGeo = new THREE.CylinderGeometry(0.2, 0.3, 2, 8);
+                const trunkMat = new THREE.MeshStandardMaterial({
+                    color: 0x8B4513,
+                    roughness: 0.9
+                });
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                treeGroup.add(trunk);
+                
+                // 樹冠
+                const crownGeo = new THREE.SphereGeometry(1.5, 8, 6);
+                const crownMat = new THREE.MeshStandardMaterial({
+                    color: 0x228B22,
+                    roughness: 0.8
+                });
+                const crown = new THREE.Mesh(crownGeo, crownMat);
+                crown.position.y = 2.5;
+                treeGroup.add(crown);
+                
+                const x = (Math.random() - 0.5) * 60;
+                const z = (Math.random() - 0.5) * 60;
+                treeGroup.position.set(x, 0, z);
+                treeGroup.userData = {
+                    type: 'tree',
+                    description: '街道樹木',
+                    history: '街道樹木美化城市環境，提供陰涼，改善空氣質量。'
+                };
+                
+                GameState.scene.add(treeGroup);
+                GameState.streetObjects.push(treeGroup);
+                GameState.interactiveObjects.push(treeGroup);
+            }
+        }
+
+        function createStalls(district) {
+            if (district.name === '深水埗') {
+                const stallCount = 3;
+                
+                for (let i = 0; i < stallCount; i++) {
+                    const stallGroup = new THREE.Group();
+                    
+                    // 攤檔支架
+                    const frameGeo = new THREE.BoxGeometry(2, 2, 1);
+                    const frameMat = new THREE.MeshStandardMaterial({
+                        color: 0x8B4513,
+                        roughness: 0.8
+                    });
+                    const frame = new THREE.Mesh(frameGeo, frameMat);
+                    stallGroup.add(frame);
+                    
+                    // 攤檔頂棚
+                    const roofGeo = new THREE.BoxGeometry(2.2, 0.1, 1.2);
+                    const roofMat = new THREE.MeshStandardMaterial({
+                        color: 0x0066CC,
+                        roughness: 0.7
+                    });
+                    const roof = new THREE.Mesh(roofGeo, roofMat);
+                    roof.position.y = 1.05;
+                    stallGroup.add(roof);
+                    
+                    const x = -25 + (i * 12);
+                    const z = 25 + (Math.random() - 0.5) * 5;
+                    stallGroup.position.set(x, 1, z);
+                    stallGroup.userData = {
+                        type: 'street_stall',
+                        description: '深水埗特色排檔',
+                        history: '深水埗排檔歷史悠久，販賣布匹、電子零件等，是香港特色市集文化。'
+                    };
+                    
+                    GameState.scene.add(stallGroup);
+                    GameState.streetObjects.push(stallGroup);
+                    GameState.interactiveObjects.push(stallGroup);
+                }
+            }
+        }
+
+        function createDistrictFeatures(district) {
+            // 石硤尾特色設施
+            if (district.name === '石硤尾') {
+                // 公共浴室
+                const bathGroup = new THREE.Group();
+                const bathGeo = new THREE.BoxGeometry(4, 3, 6);
+                const bathMat = new THREE.MeshStandardMaterial({
+                    color: 0x708090,
+                    roughness: 0.7
+                });
+                const bath = new THREE.Mesh(bathGeo, bathMat);
+                bathGroup.add(bath);
+                bathGroup.position.set(-30, 1.5, -30);
+                bathGroup.userData = {
+                    type: 'public_bath',
+                    description: '徙置區公共浴室',
+                    history: '60年代石硤尾徙置區設有公共浴室，供居民使用，反映當時居住條件。'
+                };
+                GameState.scene.add(bathGroup);
+                GameState.interactiveObjects.push(bathGroup);
+                
+                // 晾衫架
+                const dryingGroup = new THREE.Group();
+                for (let i = 0; i < 3; i++) {
+                    const poleGeo = new THREE.CylinderGeometry(0.05, 0.05, 3, 8);
+                    const poleMat = new THREE.MeshStandardMaterial({
+                        color: 0xC0C0C0,
+                        roughness: 0.6
+                    });
+                    const pole = new THREE.Mesh(poleGeo, poleMat);
+                    pole.position.set(i * 1.5, 1.5, 0);
+                    dryingGroup.add(pole);
+                }
+                dryingGroup.position.set(25, 0, -25);
+                dryingGroup.userData = {
+                    type: 'drying_rack',
+                    description: '公共晾衫架',
+                    history: '徙置區居民在公共空間晾曬衣物，形成獨特的生活場景。'
+                };
+                GameState.scene.add(dryingGroup);
+                GameState.interactiveObjects.push(dryingGroup);
+            }
+            
+            // 旺角特色設施
+            if (district.name === '旺角') {
+                // 巴士站
+                const busStopGroup = new THREE.Group();
+                const shelterGeo = new THREE.BoxGeometry(3, 2.5, 1);
+                const shelterMat = new THREE.MeshStandardMaterial({
+                    color: 0x1E90FF,
+                    roughness: 0.6
+                });
+                const shelter = new THREE.Mesh(shelterGeo, shelterMat);
+                busStopGroup.add(shelter);
+                
+                const signGeo = new THREE.BoxGeometry(0.5, 1, 0.05);
+                const signMat = new THREE.MeshStandardMaterial({
+                    color: 0xFFD700,
+                    roughness: 0.5
+                });
+                const sign = new THREE.Mesh(signGeo, signMat);
+                sign.position.set(0, 1.75, 0.5);
+                busStopGroup.add(sign);
+                
+                busStopGroup.position.set(30, 1.25, -30);
+                busStopGroup.userData = {
+                    type: 'bus_stop',
+                    description: '舊式巴士站',
+                    history: '旺角繁忙的巴士站見證香港公共交通發展，連接各區的重要樞紐。'
+                };
+                GameState.scene.add(busStopGroup);
+                GameState.interactiveObjects.push(busStopGroup);
+                
+                // 電影海報欄
+                const posterGroup = new THREE.Group();
+                const boardGeo = new THREE.BoxGeometry(3, 2, 0.1);
+                const boardMat = new THREE.MeshStandardMaterial({
+                    color: 0x2F4F4F,
+                    roughness: 0.7
+                });
+                const board = new THREE.Mesh(boardGeo, boardMat);
+                posterGroup.add(board);
+                
+                const posterGeo = new THREE.PlaneGeometry(2.5, 1.5);
+                const posterMat = new THREE.MeshStandardMaterial({
+                    color: 0xFF4500,
+                    roughness: 0.5
+                });
+                const poster = new THREE.Mesh(posterGeo, posterMat);
+                poster.position.set(0, 0, 0.06);
+                posterGroup.add(poster);
+                
+                posterGroup.position.set(-30, 1, 30);
+                posterGroup.userData = {
+                    type: 'movie_poster',
+                    description: '電影宣傳海報',
+                    history: '80-90年代旺角戲院林立，電影海報欄宣傳最新港產片，見證香港電影黃金時期。'
+                };
+                GameState.scene.add(posterGroup);
+                GameState.interactiveObjects.push(posterGroup);
+            }
+        }
+
+        function createPedestrians() {
+            const maxPedestrians = Performance.isLowPerformance ? 8 : Config.PERFORMANCE.maxPedestrians;
+            const district = Config.DISTRICTS[GameState.currentDistrict];
+            const era = Config.ERAS[GameState.currentEra];
+            
+            const pedestrianCount = Math.floor(maxPedestrians * era.populationDensity);
+            
+            for (let i = 0; i < pedestrianCount; i++) {
+                const pedestrian = createPedestrian(era);
+                
+                // 隨機位置
+                const x = (Math.random() - 0.5) * 60;
+                const z = (Math.random() - 0.5) * 60;
+                pedestrian.position.set(x, 0.9, z);
+                
+                // 隨機方向
+                pedestrian.rotation.y = Math.random() * Math.PI * 2;
+                
+                // 移動速度
+                pedestrian.userData.speed = 0.5 + Math.random() * 1.0;
+                pedestrian.userData.direction = new THREE.Vector3(
+                    Math.sin(pedestrian.rotation.y),
+                    0,
+                    Math.cos(pedestrian.rotation.y)
+                );
+                
+                GameState.scene.add(pedestrian);
+                GameState.pedestrians.push(pedestrian);
+            }
+        }
+
+        function createPedestrian(era) {
+            const group = new THREE.Group();
+            
+            // 身體
+            const bodyGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.6, 8);
+            let bodyColor;
+            
+            switch(era.name) {
+                case '60s': bodyColor = 0x8B4513; break; // 棕色
+                case '70s': bodyColor = 0x4682B4; break; // 藍色
+                case '80s': bodyColor = 0xFF69B4; break; // 粉色
+                case '90s': bodyColor = 0x32CD32; break; // 綠色
+                default: bodyColor = 0x808080;
+            }
+            
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: bodyColor,
+                roughness: 0.8
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.3;
+            group.add(body);
+            
+            // 頭部
+            const headGeo = new THREE.SphereGeometry(0.15, 8, 6);
+            const headMat = new THREE.MeshStandardMaterial({
+                color: 0xFFE4B5,
+                roughness: 0.7
+            });
+            const head = new THREE.Mesh(headGeo, headMat);
+            head.position.y = 0.75;
+            group.add(head);
+            
+            group.scale.set(0.8, 0.8, 0.8);
+            group.userData.type = 'pedestrian';
+            
+            return group;
+        }
+
+        function createVehicles() {
+            const maxVehicles = Performance.isLowPerformance ? 5 : Config.PERFORMANCE.maxVehicles;
+            const era = Config.ERAS[GameState.currentEra];
+            
+            const vehicleCount = Math.floor(maxVehicles * era.vehicleDensity);
+            
+            for (let i = 0; i < vehicleCount; i++) {
+                const vehicle = createVehicle(era);
+                
+                // 車道位置
+                const lane = Math.random() > 0.5 ? 1 : -1;
+                const x = lane * 8;
+                const z = (Math.random() - 0.5) * 80;
+                
+                vehicle.position.set(x, 0.5, z);
+                
+                // 方向
+                const direction = lane > 0 ? -1 : 1;
+                vehicle.rotation.y = direction > 0 ? 0 : Math.PI;
+                
+                // 移動速度
+                vehicle.userData.speed = 2 + Math.random() * 3;
+                vehicle.userData.direction = direction;
+                
+                GameState.scene.add(vehicle);
+                GameState.vehicles.push(vehicle);
+            }
+        }
+
+        function createVehicle(era) {
+            const group = new THREE.Group();
+            
+            // 車身
+            const bodyGeo = new THREE.BoxGeometry(2, 0.6, 1.2);
+            let bodyColor;
+            
+            switch(era.name) {
+                case '60s': bodyColor = 0x000000; break; // 黑色
+                case '70s': bodyColor = 0x8B0000; break; // 紅色
+                case '80s': bodyColor = 0xFFFF00; break; // 黃色
+                case '90s': bodyColor = 0x00CED1; break; // 青色
+                default: bodyColor = 0x808080;
+            }
+            
+            const bodyMat = new THREE.MeshStandardMaterial({
+                color: bodyColor,
+                roughness: 0.6
+            });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            group.add(body);
+            
+            // 車輪
+            const wheelGeo = new THREE.CylinderGeometry(0.2, 0.2, 0.1, 8);
+            const wheelMat = new THREE.MeshStandardMaterial({
+                color: 0x222222,
+                roughness: 0.8
+            });
+            
+            for (let i = 0; i < 4; i++) {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                const x = i < 2 ? -0.7 : 0.7;
+                const z = i % 2 === 0 ? -0.6 : 0.6;
+                wheel.position.set(x, -0.3, z);
+                wheel.rotation.z = Math.PI / 2;
+                group.add(wheel);
+            }
+            
+            group.userData.type = 'vehicle';
+            
+            return group;
         }
 
         // ============================================
@@ -3630,7 +4521,7 @@
                 }
             }
             
-            // ESC返回主頁
+            // ESC返回主頁或退出建築
             if (key === 'escape') {
                 if (GameState.isInBuilding) {
                     exitBuilding();
@@ -3642,6 +4533,11 @@
             // E鍵互動
             if (key === 'e' && !event.repeat) {
                 simulateClick();
+            }
+            
+            // 手動控制時停止自動巡航
+            if ((key === 'w' || key === 'a' || key === 's' || key === 'd') && GameState.autoCruise) {
+                stopAllMovement();
             }
         }
 
@@ -3680,8 +4576,11 @@
                         interactionHint.innerHTML = `<i class="fas fa-shield-alt"></i> 點擊查看鐵窗花設計`;
                     } else if (userData.type === 'security_grille') {
                         interactionHint.innerHTML = `<i class="fas fa-lock"></i> 點擊查看防盜網`;
+                    } else if (userData.type === 'tong_lau') {
+                        interactionHint.innerHTML = `<i class="fas fa-building"></i> 點擊查看唐樓資訊`;
+                        GameState.selectedObject = object;
                     } else {
-                        interactionHint.innerHTML = `<i class="fas fa-hand-pointer"></i> 點擊查看詳細資訊`;
+                        interactionHint.innerHTML = `<i class="fas fa-hand-pointer"></i> 點擊查看${userData.description}`;
                     }
                     
                     // 改變游標樣式
@@ -3692,6 +4591,7 @@
                     interactionHint.style.display = 'none';
                 }
                 canvas.style.cursor = GameState.input.mouse.down ? 'grabbing' : 'grab';
+                GameState.selectedObject = null;
             }
         }
 
@@ -3714,28 +4614,65 @@
                 
                 // 播放互動聲效
                 playInteractionSound(object.userData.type);
+                
+                // 設置選中物件（用於進入建築）
+                GameState.selectedObject = object.userData.parentBuilding || object;
+            } else {
+                closeDetailPanel();
             }
         }
 
-        let infoTimer = null;
         function showObjectInfo(object) {
             const panel = document.getElementById('detail-panel');
             const title = document.getElementById('detail-title');
             const content = document.getElementById('detail-content');
             const history = document.getElementById('detail-history');
+            
             if (!panel || !title || !content || !history) return;
-            if (infoTimer) clearTimeout(infoTimer);
+            
             const userData = object.userData;
-            panel.style.display = 'block';
-            if (!document.getElementById('close-detail')) {
-                const closeBtn = document.createElement('div');
-                closeBtn.id = 'close-detail';
-                closeBtn.innerHTML = '<i class="fas fa-times"></i>';
-                closeBtn.style.cssText = 'position:absolute;top:10px;right:10px;cursor:pointer;';
-                closeBtn.onclick = () => panel.style.display = 'none';
-                panel.appendChild(closeBtn);
+            
+            // 設置標題
+            title.innerHTML = `<i class="fas fa-info-circle"></i> ${userData.description || '物件詳細資訊'}`;
+            
+            // 設置內容
+            let contentHTML = '';
+            let historyHTML = '';
+            
+            if (userData.type) {
+                contentHTML += `<div class="detail-content">
+                    <div><span class="detail-icon"><i class="fas fa-tag"></i></span><strong>類型：</strong>${userData.type}</div>`;
+                
+                if (userData.era) {
+                    contentHTML += `<div><span class="detail-icon"><i class="fas fa-calendar"></i></span><strong>年代：</strong>${userData.era}</div>`;
+                }
+                
+                if (userData.floor) {
+                    contentHTML += `<div><span class="detail-icon"><i class="fas fa-layer-group"></i></span><strong>樓層：</strong>第${userData.floor}層</div>`;
+                }
+                
+                contentHTML += `</div>`;
+                
+                // 歷史背景
+                if (userData.history) {
+                    historyHTML = `<div class="detail-content">
+                        <h5><i class="fas fa-history"></i> 歷史背景</h5>
+                        <p>${userData.history}</p>
+                    </div>`;
+                }
             }
-            infoTimer = setTimeout(() => { panel.style.display = 'none'; }, 10000);
+            
+            content.innerHTML = contentHTML;
+            history.innerHTML = historyHTML;
+            
+            panel.style.display = 'block';
+        }
+
+        function closeDetailPanel() {
+            const panel = document.getElementById('detail-panel');
+            if (panel) {
+                panel.style.display = 'none';
+            }
         }
 
         function playInteractionSound(type) {
@@ -3743,6 +4680,36 @@
             
             // 這裡可以添加具體的互動聲效
             console.log(`播放互動聲效: ${type}`);
+            
+            // 模擬播放音效
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            gainNode.gain.value = GameState.volume * 0.1;
+            
+            // 根據互動類型設置不同音調
+            switch(type) {
+                case 'window':
+                    oscillator.frequency.value = 440; // A4
+                    break;
+                case 'neon_sign':
+                    oscillator.frequency.value = 523.25; // C5
+                    break;
+                case 'phone_booth':
+                    oscillator.frequency.value = 659.25; // E5
+                    break;
+                default:
+                    oscillator.frequency.value = 392; // G4
+            }
+            
+            oscillator.start();
+            setTimeout(() => {
+                oscillator.stop();
+            }, 200);
         }
 
         // ============================================
@@ -3776,28 +4743,117 @@
                 updateDroneMovement(deltaTime);
             }
             
-            
             // 更新動態元素
             if (GameState.animations.pedestrian) updatePedestrians(deltaTime);
             if (GameState.animations.vehicle) updateVehicles(deltaTime);
-            if (GameState.animations.neon) updateNeonSigns();
+            if (GameState.animations.neon) updateNeonSigns(deltaTime);
             
             // 更新天氣粒子
             const weatherEffect = GameState.scene.getObjectByName('weather-effect');
             if (weatherEffect && GameState.currentWeather === 'rainy') {
                 const positions = weatherEffect.geometry.attributes.position.array;
                 for (let i = 1; i < positions.length; i += 3) {
-                    positions[i] -= 0.5;
+                    positions[i] -= 0.5 * GameState.animationSpeed;
                     if (positions[i] < 0) positions[i] = 100;
                 }
                 weatherEffect.geometry.attributes.position.needsUpdate = true;
             }
-    
             
             // 渲染場景
             if (GameState.renderer && GameState.scene && GameState.camera) {
                 GameState.renderer.render(GameState.scene, GameState.camera);
             }
+        }
+
+        function updatePedestrians(deltaTime) {
+            if (!GameState.animations.pedestrian) return;
+            
+            GameState.pedestrians.forEach(pedestrian => {
+                // 檢查行人動畫是否開啟
+                if (!pedestrian.userData.speed) return;
+                
+                // 移動
+                const moveDistance = pedestrian.userData.speed * deltaTime * GameState.animationSpeed;
+                pedestrian.position.x += pedestrian.userData.direction.x * moveDistance;
+                pedestrian.position.z += pedestrian.userData.direction.z * moveDistance;
+                
+                // 邊界檢查
+                const bounds = 40;
+                if (Math.abs(pedestrian.position.x) > bounds || Math.abs(pedestrian.position.z) > bounds) {
+                    // 改變方向
+                    pedestrian.rotation.y = Math.random() * Math.PI * 2;
+                    pedestrian.userData.direction.set(
+                        Math.sin(pedestrian.rotation.y),
+                        0,
+                        Math.cos(pedestrian.rotation.y)
+                    );
+                    
+                    // 移回範圍內
+                    pedestrian.position.x = Math.max(-bounds, Math.min(bounds, pedestrian.position.x));
+                    pedestrian.position.z = Math.max(-bounds, Math.min(bounds, pedestrian.position.z));
+                }
+                
+                // 隨機改變方向
+                if (Math.random() < 0.01) {
+                    pedestrian.rotation.y += (Math.random() - 0.5) * Math.PI / 4;
+                    pedestrian.userData.direction.set(
+                        Math.sin(pedestrian.rotation.y),
+                        0,
+                        Math.cos(pedestrian.rotation.y)
+                    );
+                }
+            });
+        }
+
+        function updateVehicles(deltaTime) {
+            if (!GameState.animations.vehicle) return;
+            
+            GameState.vehicles.forEach(vehicle => {
+                // 檢查車輛動畫是否開啟
+                if (!vehicle.userData.speed) return;
+                
+                // 移動
+                const moveDistance = vehicle.userData.speed * deltaTime * GameState.animationSpeed;
+                vehicle.position.z += vehicle.userData.direction * moveDistance;
+                
+                // 邊界檢查
+                const bounds = 50;
+                if (Math.abs(vehicle.position.z) > bounds) {
+                    // 重置位置
+                    vehicle.position.z = -bounds * Math.sign(vehicle.userData.direction);
+                    
+                    // 隨機變換車道
+                    if (Math.random() > 0.7) {
+                        vehicle.position.x = vehicle.position.x > 0 ? -8 : 8;
+                        vehicle.userData.direction *= -1;
+                        vehicle.rotation.y = vehicle.userData.direction > 0 ? 0 : Math.PI;
+                    }
+                }
+            });
+        }
+
+        function updateNeonSigns(deltaTime) {
+            if (!GameState.animations.neon) return;
+            
+            const time = Date.now() * 0.001;
+            
+            GameState.scene.traverse(object => {
+                if (object.userData && object.userData.type === 'neon_sign' && object.material) {
+                    // 閃爍效果
+                    const intensity = 0.3 + Math.sin(time * 3 + object.position.x * 0.1) * 0.2;
+                    
+                    if (object.material.emissive) {
+                        object.material.emissiveIntensity = intensity;
+                    }
+                    
+                    // 顏色變化
+                    if (Math.random() < 0.01) {
+                        const newMaterial = MaterialManager.getRandomNeonMaterial();
+                        object.material = newMaterial;
+                        object.material.emissiveIntensity = intensity;
+                    }
+                }
+            });
         }
 
         // ============================================
@@ -3836,6 +4892,8 @@
             if (btn) {
                 btn.classList.toggle('active', GameState.floorVisibility[floor]);
             }
+            
+            // 實際控制樓層可見性
             GameState.buildings.forEach(building => {
                 building.traverse(child => {
                     if (child.userData && child.userData.floorType === floor) {
@@ -3843,6 +4901,14 @@
                     }
                 });
             });
+            
+            // 更新街道元素
+            GameState.streetObjects.forEach(obj => {
+                if (obj.userData && obj.userData.floorType === floor) {
+                    obj.visible = GameState.floorVisibility[floor];
+                }
+            });
+            
             Performance.showNotification(`${floor === 'ground' ? '地鋪' : floor === 'residential' ? '住宅層' : '天台'}已${GameState.floorVisibility[floor] ? '顯示' : '隱藏'}`, 'success');
         }
 
@@ -3852,6 +4918,16 @@
                 const btn = document.getElementById(`floor-${floor}`);
                 if (btn) btn.classList.add('active');
             });
+            
+            // 顯示所有樓層
+            GameState.buildings.forEach(building => {
+                building.traverse(child => {
+                    if (child.userData && child.userData.floorType) {
+                        child.visible = true;
+                    }
+                });
+            });
+            
             Performance.showNotification('所有樓層已顯示', 'success');
         }
 
@@ -3861,6 +4937,16 @@
                 const btn = document.getElementById(`floor-${floor}`);
                 if (btn) btn.classList.remove('active');
             });
+            
+            // 隱藏所有樓層
+            GameState.buildings.forEach(building => {
+                building.traverse(child => {
+                    if (child.userData && child.userData.floorType) {
+                        child.visible = false;
+                    }
+                });
+            });
+            
             Performance.showNotification('所有樓層已隱藏', 'success');
         }
 
@@ -3917,10 +5003,18 @@
             const weatherNames = ['晴天', '多雲', '陰天', '雨天'];
             const weather = weatherTypes[parseInt(value)];
             const weatherName = weatherNames[parseInt(value)];
+            
             GameState.currentWeather = weather;
             document.getElementById('weather-value').textContent = weatherName;
+            
+            // 移除現有天氣效果
             const oldWeather = GameState.scene.getObjectByName('weather-effect');
-            if (oldWeather) GameState.scene.remove(oldWeather);
+            if (oldWeather) {
+                GameState.scene.remove(oldWeather);
+                disposeObject(oldWeather);
+            }
+            
+            // 設置新天氣
             if (weather === 'overcast' || weather === 'rainy') {
                 GameState.scene.fog.color.setHex(0x666666);
                 GameState.scene.background.setHex(0x666666);
@@ -3930,37 +5024,95 @@
                 GameState.scene.background.setHex(0x87CEEB);
                 if (GameState.ambientLight) GameState.ambientLight.intensity = 0.6;
             }
+            
+            // 創建雨效
             if (weather === 'rainy') {
                 const rainGeo = new THREE.BufferGeometry();
                 const rainCount = 5000;
                 const positions = new Float32Array(rainCount * 3);
-                for(let i=0; i<rainCount*3; i+=3) {
+                
+                for(let i = 0; i < rainCount * 3; i += 3) {
                     positions[i] = Math.random() * 200 - 100;
                     positions[i+1] = Math.random() * 100;
                     positions[i+2] = Math.random() * 200 - 100;
                 }
+                
                 rainGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-                const rainMat = new THREE.PointsMaterial({ color: 0xaaaaaa, size: 0.1, transparent: true });
+                const rainMat = new THREE.PointsMaterial({ 
+                    color: 0xaaaaaa, 
+                    size: 0.1, 
+                    transparent: true 
+                });
+                
                 const rain = new THREE.Points(rainGeo, rainMat);
                 rain.name = 'weather-effect';
                 GameState.scene.add(rain);
             }
+            
             Performance.showNotification(`天氣設置為${weatherName}`, 'success');
         }
 
         function updateLighting() {
             if (!GameState.sunLight) return;
+            
             const angle = (GameState.time / 24) * Math.PI * 2 - Math.PI / 2;
             const distance = 100;
-            GameState.sunLight.position.set(Math.cos(angle) * distance, Math.sin(angle) * distance, 20);
+            
+            GameState.sunLight.position.set(
+                Math.cos(angle) * distance, 
+                Math.sin(angle) * distance, 
+                20
+            );
+            
             const isNight = GameState.time < 6 || GameState.time > 18;
             GameState.sunLight.intensity = isNight ? 0.1 : 1.0;
+            
+            // 夜晚時開啟霓虹燈
             GameState.animations.neon = isNight;
+            
+            // 更新街燈
             GameState.scene.traverse(child => {
-                if (child.userData && (child.userData.type === 'neon_sign' || child.userData.type === 'street_lamp')) {
-                    child.visible = isNight;
+                if (child.userData && child.userData.type === 'lamppost') {
+                    const light = child.children.find(c => c.geometry instanceof THREE.ConeGeometry);
+                    if (light && light.material) {
+                        light.material.emissiveIntensity = isNight ? 0.3 : 0;
+                    }
                 }
             });
+        }
+
+        function setupLighting() {
+            // 環境光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            GameState.scene.add(ambientLight);
+            GameState.ambientLight = ambientLight;
+            
+            // 主光源（太陽）
+            const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            sunLight.position.set(50, 80, 30);
+            sunLight.castShadow = !Performance.isLowPerformance;
+            
+            if (!Performance.isLowPerformance) {
+                sunLight.shadow.camera.left = -80;
+                sunLight.shadow.camera.right = 80;
+                sunLight.shadow.camera.top = 80;
+                sunLight.shadow.camera.bottom = -80;
+                sunLight.shadow.camera.near = 0.5;
+                sunLight.shadow.camera.far = 300;
+                sunLight.shadow.mapSize.width = 2048;
+                sunLight.shadow.mapSize.height = 2048;
+            }
+            
+            GameState.scene.add(sunLight);
+            GameState.sunLight = sunLight;
+            
+            // 補光
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
+            fillLight.position.set(-50, 40, -30);
+            GameState.scene.add(fillLight);
+            
+            // 初始化時間光照
+            updateLighting();
         }
 
         function toggleDetail(detail) {
@@ -3969,6 +5121,8 @@
             if (btn) {
                 btn.classList.toggle('active');
             }
+            
+            // 重建場景以應用更改
             createBaseScene();
             
             const detailNames = {
@@ -3995,6 +5149,8 @@
             if (btn) {
                 btn.classList.toggle('active');
             }
+            
+            // 重建場景以應用更改
             createBaseScene();
             
             const elementNames = {
@@ -4021,7 +5177,20 @@
             if (btn) {
                 btn.classList.toggle('active', GameState.animations[type]);
             }
-            Performance.showNotification(`${type === 'pedestrian' ? '行人' : type === 'vehicle' ? '車輛' : '霓虹'}動畫已${GameState.animations[type] ? '開啟' : '關閉'}`, 'success');
+            
+            const animationNames = {
+                'pedestrian': '行人動畫',
+                'vehicle': '車輛移動',
+                'neon': '霓虹閃爍',
+                'traffic': '交通燈',
+                'shop': '店鋪動畫',
+                'weather': '天氣效果'
+            };
+            
+            if (animationNames[type]) {
+                const status = GameState.animations[type] ? '開啟' : '關閉';
+                Performance.showNotification(`${animationNames[type]}已${status}`, 'success');
+            }
         }
 
         function updateAnimationSpeed(value) {
@@ -4074,13 +5243,24 @@
 
         function togglePerformanceMode() {
             Performance.isHighPerformanceMode = !Performance.isHighPerformanceMode;
-            const btn = document.getElementById('perf-mode-btn');
-            if (btn) { btn.innerHTML = Performance.isHighPerformanceMode ? '<i class="fas fa-bolt"></i> 高性能模式' : '<i class="fas fa-leaf"></i> 省電模式'; }
+            
+            // 更新UI
+            const performanceModeElement = document.getElementById('performance-mode');
+            if (performanceModeElement) {
+                performanceModeElement.textContent = Performance.isHighPerformanceMode ? '高性能模式' : '平衡模式';
+            }
+            
+            // 實際調整渲染參數
             if (GameState.renderer) {
                 GameState.renderer.shadowMap.enabled = Performance.isHighPerformanceMode;
-                GameState.renderer.setPixelRatio(Performance.isHighPerformanceMode ? window.devicePixelRatio : 1);
+                GameState.renderer.setPixelRatio(Performance.isHighPerformanceMode ? 
+                    Math.min(window.devicePixelRatio, 2) : 1);
+                GameState.renderer.antialias = Performance.isHighPerformanceMode;
             }
+            
+            // 重建場景
             createBaseScene();
+            
             Performance.showNotification(`已切換至${Performance.isHighPerformanceMode ? '高性能' : '省電'}模式`, 'info');
         }
 
@@ -4148,6 +5328,7 @@
                     20,
                     building.position.z + 25
                 );
+                
                 if (GameState.controls) {
                     GameState.controls.target.set(
                         building.position.x,
@@ -4155,31 +5336,59 @@
                         building.position.z
                     );
                 }
+                
                 Performance.showNotification('已聚焦隨機建築物', 'success');
             }
         }
 
-        function enterBuilding(building) {
-            if (!building) return;
+        function enterBuilding() {
+            if (!GameState.selectedObject) {
+                Performance.showNotification('請先點選一棟建築物', 'warning');
+                return;
+            }
+            
             GameState.isInBuilding = true;
-            GameState.currentBuilding = building;
+            GameState.currentBuilding = GameState.selectedObject;
+            
+            // 保存當前相機位置
             GameState.lastCameraPosition = GameState.camera.position.clone();
-            GameState.lastCameraTarget = GameState.controls.target.clone();
-            const pos = building.position.clone();
-            GameState.camera.position.set(pos.x, 2, pos.z);
-            GameState.controls.target.set(pos.x + 1, 2, pos.z);
-            GameState.controls.update();
-            Performance.showNotification('已進入建築內部', 'success');
+            GameState.lastCameraTarget = GameState.controls ? GameState.controls.target.clone() : new THREE.Vector3();
+            
+            // 移動相機到建築內部
+            const buildingPos = GameState.selectedObject.position.clone();
+            GameState.camera.position.set(
+                buildingPos.x,
+                2,
+                buildingPos.z
+            );
+            
+            if (GameState.controls) {
+                GameState.controls.target.set(
+                    buildingPos.x + 1,
+                    2,
+                    buildingPos.z
+                );
+                GameState.controls.update();
+            }
+            
+            Performance.showNotification('已進入建築內部，按ESC鍵退出', 'success');
         }
 
         function exitBuilding() {
             if (!GameState.isInBuilding) return;
+            
             GameState.isInBuilding = false;
-            if (GameState.lastCameraPosition) {
+            
+            // 恢復相機位置
+            if (GameState.lastCameraPosition && GameState.lastCameraTarget) {
                 GameState.camera.position.copy(GameState.lastCameraPosition);
-                GameState.controls.target.copy(GameState.lastCameraTarget);
-                GameState.controls.update();
+                
+                if (GameState.controls) {
+                    GameState.controls.target.copy(GameState.lastCameraTarget);
+                    GameState.controls.update();
+                }
             }
+            
             GameState.currentBuilding = null;
             Performance.showNotification('已退出建築', 'success');
         }
@@ -4204,41 +5413,118 @@
         
         function stopAllMovement() {
             GameState.autoCruise = false;
+            
+            // 清除所有輸入
             Object.keys(GameState.input.keys).forEach(key => {
                 GameState.input.keys[key] = false;
             });
-            if (GameState.viewMode === 'drone') {
-                Performance.showNotification('自動巡航已停止', 'info');
+            
+            // 更新視角按鈕狀態
+            const droneBtn = document.getElementById('view-drone');
+            if (droneBtn) {
+                droneBtn.classList.remove('auto-cruise');
             }
+            
+            // 顯示停止提示
+            const stopHint = document.getElementById('stop-hint');
+            if (stopHint) {
+                stopHint.style.display = 'block';
+                setTimeout(() => {
+                    stopHint.style.display = 'none';
+                }, 2000);
+            }
+            
+            Performance.showNotification('自動巡航已停止', 'info');
         }
     
         function setViewMode(mode) {
+            const oldMode = GameState.viewMode;
             GameState.viewMode = mode;
-            // 切換模式時預設關閉自動巡航，除非是無人機模式
-            GameState.autoCruise = (mode === 'drone');
             
+            // 重置自動巡航狀態
+            if (mode !== 'drone') {
+                GameState.autoCruise = false;
+            }
+            
+            // 更新按鈕狀態
             document.querySelectorAll('.view-btn').forEach(btn => {
                 btn.classList.remove('active');
+                btn.classList.remove('auto-cruise');
             });
+            
             const btn = document.getElementById(`view-${mode}`);
-            if (btn) btn.classList.add('active');
+            if (btn) {
+                btn.classList.add('active');
+                if (mode === 'drone' && GameState.autoCruise) {
+                    btn.classList.add('auto-cruise');
+                }
+            }
             
             const crosshair = document.getElementById('crosshair');
-            if (crosshair) crosshair.style.display = mode === 'fps' ? 'block' : 'none';
+            if (crosshair) {
+                crosshair.style.display = mode === 'fps' ? 'block' : 'none';
+            }
             
             if (GameState.controls) {
                 GameState.controls.enabled = (mode === 'orbit');
             }
 
-            if (mode === 'orbit') {
-                document.getElementById('view-mode-text').textContent = '軌道視角';
-                Performance.showNotification('軌道視角：滑鼠拖曳旋轉，滾輪縮放', 'success');
-            } else if (mode === 'fps') {
-                document.getElementById('view-mode-text').textContent = '第一人稱';
-                Performance.showNotification('第一人稱視角：WASD移動，滑鼠環視', 'success');
-            } else if (mode === 'drone') {
-                document.getElementById('view-mode-text').textContent = '無人機俯瞰';
-                Performance.showNotification('無人機視角：自動巡航中，按WASD可手動控制', 'success');
+            // 視角切換動畫
+            if (oldMode !== mode && GameState.camera) {
+                const startPos = GameState.camera.position.clone();
+                const targetPos = getViewModeStartPosition(mode);
+                
+                // 使用lerp實現平滑過渡
+                const duration = 1000; // 1秒
+                const startTime = Date.now();
+                
+                function animateTransition() {
+                    const elapsed = Date.now() - startTime;
+                    const progress = Math.min(elapsed / duration, 1);
+                    
+                    // 使用easeOutCubic緩動函數
+                    const easeProgress = 1 - Math.pow(1 - progress, 3);
+                    
+                    GameState.camera.position.lerpVectors(startPos, targetPos, easeProgress);
+                    
+                    if (progress < 1) {
+                        requestAnimationFrame(animateTransition);
+                    }
+                }
+                
+                animateTransition();
+            }
+            
+            // 更新UI文字
+            const modeNames = {
+                'orbit': '軌道視角',
+                'fps': '第一人稱',
+                'drone': '無人機俯瞰'
+            };
+            
+            document.getElementById('view-mode-text').textContent = modeNames[mode] || '未知視角';
+            
+            const messages = {
+                'orbit': '軌道視角：滑鼠拖曳旋轉，滾輪縮放',
+                'fps': '第一人稱視角：WASD移動，滑鼠環視',
+                'drone': '無人機視角：自動巡航中，按WASD可手動控制'
+            };
+            
+            if (messages[mode]) {
+                Performance.showNotification(messages[mode], 'success');
+            }
+        }
+
+        function getViewModeStartPosition(mode) {
+            switch(mode) {
+                case 'orbit':
+                    return new THREE.Vector3(40, 35, 50);
+                case 'fps':
+                    return new THREE.Vector3(0, 2, 20);
+                case 'drone':
+                    return new THREE.Vector3(0, 50, 80);
+                default:
+                    return new THREE.Vector3(40, 35, 50);
             }
         }
 
@@ -4248,23 +5534,50 @@
             GameState.camera.getWorldDirection(direction);
             direction.y = 0;
             direction.normalize();
+            
             const sideDirection = new THREE.Vector3();
             sideDirection.crossVectors(direction, GameState.camera.up).normalize();
+            
             const nextPos = GameState.camera.position.clone();
+            
             if (GameState.input.keys['w']) nextPos.addScaledVector(direction, speed);
             if (GameState.input.keys['s']) nextPos.addScaledVector(direction, -speed);
             if (GameState.input.keys['a']) nextPos.addScaledVector(sideDirection, -speed);
             if (GameState.input.keys['d']) nextPos.addScaledVector(sideDirection, speed);
+            
+            // 改進的碰撞檢測
             let collision = false;
-            GameState.buildings.forEach(b => { if (nextPos.distanceTo(b.position) < 5) collision = true; });
-            if (!collision) { GameState.camera.position.copy(nextPos); }
+            GameState.buildings.forEach(b => {
+                const buildingBounds = new THREE.Box3().setFromObject(b);
+                const playerBounds = new THREE.Box3(
+                    new THREE.Vector3(nextPos.x - 0.5, nextPos.y - 1, nextPos.z - 0.5),
+                    new THREE.Vector3(nextPos.x + 0.5, nextPos.y + 1, nextPos.z + 0.5)
+                );
+                
+                if (buildingBounds.intersectsBox(playerBounds)) {
+                    collision = true;
+                }
+            });
+            
+            if (!collision) {
+                GameState.camera.position.copy(nextPos);
+            }
+            
+            // 更新位置顯示
+            updateLocationDisplay();
         }
 
         function updateDroneMovement(deltaTime) {
-            // 只有在無人機模式且未手動控制時才自動巡航
-            const isManual = GameState.input.keys['w'] || GameState.input.keys['s'] || GameState.input.keys['a'] || GameState.input.keys['d'];
+            const isManual = GameState.input.keys['w'] || GameState.input.keys['s'] || 
+                           GameState.input.keys['a'] || GameState.input.keys['d'];
             
             if (isManual) {
+                GameState.autoCruise = false;
+                const droneBtn = document.getElementById('view-drone');
+                if (droneBtn) {
+                    droneBtn.classList.remove('auto-cruise');
+                }
+                
                 const speed = GameState.moveSpeed * 15 * deltaTime;
                 const direction = new THREE.Vector3();
                 GameState.camera.getWorldDirection(direction);
@@ -4276,13 +5589,53 @@
                 sideDirection.crossVectors(direction, GameState.camera.up).normalize();
                 if (GameState.input.keys['a']) GameState.camera.position.addScaledVector(sideDirection, -speed);
                 if (GameState.input.keys['d']) GameState.camera.position.addScaledVector(sideDirection, speed);
+                
+                // 高度控制
+                if (GameState.input.keys[' ']) GameState.camera.position.y += speed; // 空格上升
+                if (GameState.input.keys['c'] || GameState.input.keys['control']) GameState.camera.position.y -= speed; // Ctrl下降
+                
             } else if (GameState.autoCruise) {
                 const time = Date.now() * 0.0003;
-                GameState.camera.position.x = Math.sin(time) * 80;
-                GameState.camera.position.z = Math.cos(time) * 80;
-                GameState.camera.position.y = 50;
+                const radius = 80;
+                const height = 50 + Math.sin(time * 0.5) * 10;
+                
+                GameState.camera.position.x = Math.sin(time) * radius;
+                GameState.camera.position.z = Math.cos(time) * radius;
+                GameState.camera.position.y = height;
+                
+                // 看向中心
                 GameState.camera.lookAt(0, 10, 0);
             }
+            
+            updateLocationDisplay();
+        }
+
+        function updateLocationDisplay() {
+            const locationDisplay = document.getElementById('location-display');
+            if (!locationDisplay) return;
+            
+            const pos = GameState.camera.position;
+            let locationText = '位置: ';
+            
+            if (Math.abs(pos.x) < 30 && Math.abs(pos.z) < 30) {
+                locationText += '街道中心';
+            } else if (pos.x > 30) {
+                locationText += '東側';
+            } else if (pos.x < -30) {
+                locationText += '西側';
+            } else if (pos.z > 30) {
+                locationText += '北側';
+            } else if (pos.z < -30) {
+                locationText += '南側';
+            } else {
+                locationText += '街道';
+            }
+            
+            if (GameState.isInBuilding) {
+                locationText = '位置: 建築內部';
+            }
+            
+            locationDisplay.textContent = locationText;
         }
 
         // ============================================
@@ -4330,10 +5683,15 @@
         function disposeObject(obj) {
             if (obj.geometry) obj.geometry.dispose();
             if (obj.material) {
-                if (Array.isArray(obj.material)) { obj.material.forEach(m => m.dispose()); }
-                else { obj.material.dispose(); }
+                if (Array.isArray(obj.material)) { 
+                    obj.material.forEach(m => m.dispose()); 
+                } else { 
+                    obj.material.dispose(); 
+                }
             }
-            if (obj.children) { obj.children.forEach(child => disposeObject(child)); }
+            if (obj.children) { 
+                obj.children.forEach(child => disposeObject(child)); 
+            }
         }
 
         function updateObjectCount() {
@@ -4343,10 +5701,10 @@
             const vehicleCount = GameState.vehicles.length;
             const interactiveCount = GameState.interactiveObjects.length;
             
-            const totalCount = buildingCount + objectCount + pedestrianCount + vehicleCount;
+            const totalCount = buildingCount + objectCount + pedestrianCount + vehicleCount + interactiveCount;
             
             document.getElementById('object-count').textContent = 
-                `物件: ${totalCount} (建築:${buildingCount} 街道:${objectCount} 行人:${pedestrianCount} 車輛:${vehicleCount})`;
+                `物件: ${totalCount}`;
         }
 
         function saveCurrentSceneToLocalStorage() {
@@ -4408,83 +5766,6 @@
             console.error('系統錯誤:', e.error);
             Performance.showNotification('發生錯誤，部分功能可能受影響', 'error');
         });
-
-        // ============================================
-        // 簡化的場景元素創建（保持核心功能）
-        // ============================================
-        function setupLighting() {
-            // 環境光
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            GameState.scene.add(ambientLight);
-            
-            // 主光源（太陽）
-            const sunLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            sunLight.position.set(50, 80, 30);
-            sunLight.castShadow = !Performance.isLowPerformance;
-            
-            if (!Performance.isLowPerformance) {
-                sunLight.shadow.camera.left = -80;
-                sunLight.shadow.camera.right = 80;
-                sunLight.shadow.camera.top = 80;
-                sunLight.shadow.camera.bottom = -80;
-                sunLight.shadow.camera.near = 0.5;
-                sunLight.shadow.camera.far = 300;
-                sunLight.shadow.mapSize.width = 2048;
-                sunLight.shadow.mapSize.height = 2048;
-            }
-            
-            GameState.scene.add(sunLight);
-            
-            // 補光
-            const fillLight = new THREE.DirectionalLight(0xffffff, 0.3);
-            fillLight.position.set(-50, 40, -30);
-            GameState.scene.add(fillLight);
-        }
-
-        // 其他簡化函數（保持結構完整性）
-        function createGroundShop(group, width, depth, floorHeight, era, side) {
-            // 簡化實現
-        }
-
-        function createBalcony(group, width, depth, y, era, side) {
-            // 簡化實現
-        }
-
-        function createAirConditioner(group, width, depth, y, era, side) {
-            // 簡化實現
-        }
-
-        function createRooftop(group, width, depth, totalHeight, era) {
-            // 簡化實現
-        }
-
-        function createCornerBuildings(era, district) {
-            // 簡化實現
-        }
-
-        function createStreetElements() {
-            // 簡化實現
-        }
-
-        function createPedestrians() {
-            // 簡化實現
-        }
-
-        function createVehicles() {
-            // 簡化實現
-        }
-
-        function updatePedestrians(deltaTime) {
-            // 簡化實現
-        }
-
-        function updateVehicles(deltaTime) {
-            // 簡化實現
-        }
-
-        function updateNeonSigns() {
-            // 簡化實現
-        }
 
         // ============================================
         // 簡化的觸摸事件處理
